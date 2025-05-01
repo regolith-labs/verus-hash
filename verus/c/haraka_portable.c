@@ -1,9 +1,9 @@
 #include "haraka_portable.h"
-#include "common.h" // Include for memcpy declaration
+#include "common.h" // Include common definitions
 
-// Provide a concrete implementation for memcpy for the SBF environment
-// This avoids issues with unresolved built-in functions.
-void *memcpy(void *dest, const void *src, size_t n) {
+// Define our own inline memcpy to avoid conflicts with builtins/libc
+// Make it static inline so it doesn't generate an external symbol unless used.
+static inline void *verus_memcpy(void *dest, const void *src, size_t n) {
     unsigned char *d = (unsigned char *)dest;
     const unsigned char *s = (const unsigned char *)src;
     for (size_t i = 0; i < n; i++) {
@@ -11,6 +11,10 @@ void *memcpy(void *dest, const void *src, size_t n) {
     }
     return dest;
 }
+
+// Use a macro to replace all calls to 'memcpy' within this file
+// with our 'verus_memcpy' at compile time.
+#define memcpy verus_memcpy
 
 // Forward declarations for static helper functions
 static void haraka512_perm(unsigned char *out, const unsigned char *in);

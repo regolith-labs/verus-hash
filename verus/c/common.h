@@ -10,8 +10,8 @@ static inline uint32_t rotr32(uint32_t x, int n) { return (x >> n) | (x << (32 -
 
 /* -------- Provide standard function declarations needed for SBF -------- */
 
-// Declaration for memcpy. We will provide the implementation in a .c file.
-void *memcpy(void *dest, const void *src, size_t n);
+// No standard memcpy declaration here to avoid conflicts.
+// We use a macro in haraka_portable.c to redirect calls internally.
 
 #endif /* VERUS_COMMON_H */
 
