@@ -16,7 +16,17 @@ This provides the PoW hash function for Verus, enabling CPU mining.
 
 #include "uint256.h"
 // #include "verus_clhash.h" // Removed: Not needed for portable Haraka path
+
+// Wrap C headers/functions in extern "C" when included from C++
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "haraka_portable.h" // Added: Provides memcpy/memset for SBF and u128 type
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
 
 // Removed extern "C" block around haraka_portable.h include, it's a C++ header now
 // extern "C"
@@ -57,8 +67,8 @@ class CVerusHashV2
             curBuf = buf1;
             result = buf2;
             curPos = 0;
-            // std::fill(buf1, buf1 + sizeof(buf1), 0); // Replaced with memset
-            memset(buf1, 0, sizeof(buf1));
+            // std::fill(buf1, buf1 + sizeof(buf1), 0); // Replaced with verus_memset
+            verus_memset(buf1, 0, sizeof(buf1));
             return *this;
         }
 
@@ -67,8 +77,8 @@ class CVerusHashV2
         {
             if (curPos)
             {
-                // std::fill(curBuf + 32 + curPos, curBuf + 64, 0); // Replaced with memset
-                memset(curBuf + 32 + curPos, 0, 64 - (32 + curPos));
+                // std::fill(curBuf + 32 + curPos, curBuf + 64, 0); // Replaced with verus_memset
+                verus_memset(curBuf + 32 + curPos, 0, 64 - (32 + curPos));
             }
         }
 
@@ -81,8 +91,8 @@ class CVerusHashV2
             do
             {
                 int len = left > sizeof(T) ? sizeof(T) : left;
-                // Use our declared memcpy
-                memcpy(curBuf + 32 + pos, data, len);
+                // Use our declared verus_memcpy
+                verus_memcpy(curBuf + 32 + pos, data, len);
                 pos += len;
                 left -= len;
             } while (left > 0);
@@ -94,13 +104,13 @@ class CVerusHashV2
         {
             if (curPos)
             {
-                // std::fill(curBuf + 32 + curPos, curBuf + 64, 0); // Replaced with memset
-                memset(curBuf + 32 + curPos, 0, 64 - (32 + curPos));
+                // std::fill(curBuf + 32 + curPos, curBuf + 64, 0); // Replaced with verus_memset
+                verus_memset(curBuf + 32 + curPos, 0, 64 - (32 + curPos));
                 (*haraka512Function)(hash, curBuf);
             }
             else
-                // Use our declared memcpy
-                memcpy(hash, curBuf, 32);
+                // Use our declared verus_memcpy
+                verus_memcpy(hash, curBuf, 32);
         }
 
         // Removed CLHASH-dependent methods: GenNewCLKey, IntermediateTo128Offset, Finalize2b

@@ -27,7 +27,7 @@ protected:
 public:
     base_blob()
     {
-        memset(data, 0, sizeof(data));
+        verus_memset(data, 0, sizeof(data));
     }
 
     // explicit base_blob(const std::vector<unsigned char>& vch); // Removed: Uses std::vector
@@ -42,7 +42,7 @@ public:
 
     void SetNull()
     {
-        memset(data, 0, sizeof(data));
+        verus_memset(data, 0, sizeof(data));
     }
 
     friend inline bool operator==(const base_blob& a, const base_blob& b) { return memcmp(a.data, b.data, sizeof(a.data)) == 0; }
@@ -132,8 +132,8 @@ public:
     uint64_t GetCheapHash() const
     {
         uint64_t result;
-        // Use the declared memcpy from haraka_portable.h
-        memcpy((void*)&result, (void*)data, 8);
+        // Use the declared verus_memcpy from haraka_portable.h
+        verus_memcpy((void*)&result, (void*)data, 8);
         return result;
     }
 

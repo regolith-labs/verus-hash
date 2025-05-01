@@ -311,7 +311,7 @@ static void haraka_S_squeezeblocks(unsigned char *h, unsigned long long nblocks,
 {
     while (nblocks > 0) {
         haraka512_perm(s, s);
-        memcpy(h, s, HARAKAS_RATE);
+        verus_memcpy(h, s, HARAKAS_RATE); // Use verus_memcpy
         h += r;
         nblocks--;
     }

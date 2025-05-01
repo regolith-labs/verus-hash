@@ -124,9 +124,7 @@ if [[ "$TARGET" == *"bpf"* || "$TARGET" == *"sbf"* ]]; then
   CFLAGS="$CFLAGS $BPF_TARGET_FLAGS"
   # Add C++17 standard, disable stdlib++, exceptions, RTTI for BPF
   CXXFLAGS="$CXXFLAGS $BPF_TARGET_FLAGS -std=c++17 -nostdlib++ -fno-exceptions -fno-rtti"
-  # Add -fno-builtin-memcpy for BPF to avoid conflicts with Rust's builtins
-  CFLAGS="$CFLAGS -fno-builtin-memcpy"
-  CXXFLAGS="$CXXFLAGS -fno-builtin-memcpy"
+  # -fno-builtin-memcpy is no longer needed as we renamed our functions
 else
   echo "build.sh: Using native host flags for $TARGET"
   # Native host specific flags (adjust as needed for different hosts)

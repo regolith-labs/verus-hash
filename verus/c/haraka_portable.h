@@ -8,11 +8,12 @@
 // in haraka_portable.c and avoiding linker conflicts.
 // Use the standard C definition of size_t
 #include <stddef.h>
-// Declare the functions as static to match their definitions in haraka_portable.c.
-// This gives them internal linkage, preventing linker conflicts with Rust's builtins.
-static void *memcpy(void *dest, const void *src, size_t n);
-static void *memset(void *s, int c, size_t n);
-static int memcmp(const void *s1, const void *s2, size_t n);
+// Declare standard functions. Definitions in haraka_portable.c are static for BPF.
+// Host builds will link against the system library versions.
+// Renamed to avoid conflicts with compiler builtins during SBF linking.
+void *verus_memcpy(void *dest, const void *src, size_t n);
+void *verus_memset(void *s, int c, size_t n);
+int verus_memcmp(const void *s1, const void *s2, size_t n);
 
 // Always use the portable __m128i definition for SBF build
 // Define a compatible type for __m128i when using portable C code
@@ -56,10 +57,11 @@ static inline __m128i _mm_unpacklo_epi32_emu(__m128i a, __m128i b)
     uint32_t result[4];
     unsigned char *bytes_a = (unsigned char *)&a;
     unsigned char *bytes_b = (unsigned char *)&b;
-    memcpy(&result[0], bytes_a, 4);      // a[0]
-    memcpy(&result[1], bytes_b, 4);      // b[0]
-    memcpy(&result[2], bytes_a + 4, 4);  // a[1]
-    memcpy(&result[3], bytes_b + 4, 4);  // b[1]
+    // Use verus_memcpy instead of standard memcpy
+    verus_memcpy(&result[0], bytes_a, 4);      // a[0]
+    verus_memcpy(&result[1], bytes_b, 4);      // b[0]
+    verus_memcpy(&result[2], bytes_a + 4, 4);  // a[1]
+    verus_memcpy(&result[3], bytes_b + 4, 4);  // b[1]
     // Original logic (assuming direct uint32_t access):
     // uint32_t *tmp1 = (uint32_t *)&a, *tmp2 = (uint32_t *)&b;
     // result[0] = tmp1[0];
@@ -77,19 +79,20 @@ static inline __m128i _mm_unpackhi_epi32_emu(__m128i a, __m128i b)
     uint32_t result[4];
     unsigned char *bytes_a = (unsigned char *)&a;
     unsigned char *bytes_b = (unsigned char *)&b;
-    memcpy(&result[0], bytes_a + 8, 4);  // a[2]
-    memcpy(&result[1], bytes_b + 8, 4);  // b[2]
-    memcpy(&result[2], bytes_a + 12, 4); // a[3]
-    memcpy(&result[3], bytes_b + 12, 4); // b[3]
+    // Use verus_memcpy instead of standard memcpy
+    verus_memcpy(&result[0], bytes_a + 8, 4);  // a[2]
+    verus_memcpy(&result[1], bytes_b + 8, 4);  // b[2]
+    verus_memcpy(&result[2], bytes_a + 12, 4); // a[3]
+    verus_memcpy(&result[3], bytes_b + 12, 4); // b[3]
     // Original logic (assuming direct uint32_t access):
     // uint32_t *tmp1 = (uint32_t *)&a, *tmp2 = (uint32_t *)&b;
     // result[0] = tmp1[2];
     // result[1] = tmp2[2];
     // result[2] = tmp1[3];
     // result[3] = tmp2[3];
-    // Use memcpy to avoid potential strict-aliasing issues
+    // Use verus_memcpy to avoid potential strict-aliasing issues
     __m128i res;
-    memcpy(&res, result, sizeof(res));
+    verus_memcpy(&res, result, sizeof(res));
     return res;
 }
 

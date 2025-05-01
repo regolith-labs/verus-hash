@@ -51,7 +51,7 @@ void CVerusHash::Hash(void *result, const void *data, size_t _len)
         bufPtr += nextOffset;
         nextOffset *= -1;
     }
-    memcpy(result, bufPtr, 32);
+    verus_memcpy(result, bufPtr, 32);
 };
 
 void CVerusHash::init()
@@ -143,7 +143,7 @@ void CVerusHashV2::Hash_V2(void *result, const void *data, size_t len)
     const unsigned char *ptr = (const unsigned char *)data; // Use const pointer
 
     // put our last result or zero at beginning of buffer each time
-    memset(bufPtr, 0, 32);
+    verus_memset(bufPtr, 0, 32);
 
     // digest up to 32 bytes at a time
     for ( ; pos < len; pos += 32)
@@ -151,10 +151,10 @@ void CVerusHashV2::Hash_V2(void *result, const void *data, size_t len)
         size_t remaining = len - pos; // Use size_t
         size_t chunk_size = (remaining >= 32) ? 32 : remaining; // Use size_t
 
-        memcpy(bufPtr + 32, ptr + pos, chunk_size);
+        verus_memcpy(bufPtr + 32, ptr + pos, chunk_size);
         if (chunk_size < 32)
         {
-            memset(bufPtr + 32 + chunk_size, 0, 32 - chunk_size);
+            verus_memset(bufPtr + 32 + chunk_size, 0, 32 - chunk_size);
         }
 
         (*haraka512Function)(bufPtr2, bufPtr);
@@ -177,7 +177,7 @@ CVerusHashV2 &CVerusHashV2::Write(const unsigned char *data, size_t len)
         size_t remaining = len - pos; // Use size_t
         size_t chunk_size = (remaining >= room) ? room : remaining; // Use size_t
 
-        memcpy(curBuf + 32 + curPos, data + pos, chunk_size);
+        verus_memcpy(curBuf + 32 + curPos, data + pos, chunk_size);
 
         if (curPos + chunk_size == 32) // Buffer full
         {
