@@ -184,12 +184,16 @@ void haraka512_port(uint8_t *out,const uint8_t *in)
 {
     uint8_t *buf=scr512;
     haraka512_perm(buf,in);
-    for (unsigned i=0;i<64;++i) buf[i]^=in[i];
+    /* XOR the original message (feed-forward) */
+    for (unsigned i = 0; i < 64; ++i)
+        buf[i] ^= in[i];
 
-    memcpy(out   ,buf+ 8,8);
-    memcpy(out+ 8,buf+24,8);
-    memcpy(out+16,buf+32,8);
-    memcpy(out+24,buf+48,8);
+    /* Haraka-512 -> 256 bits:
+       take lanes starting at 8, 24, 40, 56 (spec-compliant) */
+    memcpy(out     , buf +  8, 8);
+    memcpy(out +  8, buf + 24, 8);
+    memcpy(out + 16, buf + 40, 8);   /* Corrected offset */
+    memcpy(out + 24, buf + 56, 8);   /* Corrected offset */
 }
 
 /*──────────────── Haraka-256 (same style) ───────────────────────*/
