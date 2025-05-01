@@ -129,7 +129,7 @@ mod tests {
     // Use hex crate only in tests (requires std)
     extern crate std;
     use hex::FromHex;
-    use std::vec; // Import vec for test data
+    // Removed unused import: use std::vec;
 
     #[test]
     fn length_is_32() {

@@ -171,11 +171,18 @@ echo "-------------------------------------------"
 # ------------------------------------------------------------------------------
 # 5. Archive into libverushash.a
 # ------------------------------------------------------------------------------
-# Use llvm-ar provided by Solana SDK if available, otherwise default ar
-AR="${AR:-llvm-ar}"
+# Use llvm-ar for BPF targets, system ar for host targets
+if [[ "$TARGET" == *"bpf"* || "$TARGET" == *"sbf"* ]]; then
+  AR="${AR:-llvm-ar}"
+  echo "build.sh: Using llvm-ar for BPF target"
+else
+  AR="${AR:-ar}" # Use system ar for host
+  echo "build.sh: Using system ar for host target"
+fi
+
 ARCHIVE_FILE="$OUT_DIR/libverushash.a"
 
-echo "Archiving object files into $ARCHIVE_FILE"
+echo "Archiving object files into $ARCHIVE_FILE using $AR"
 # rcs: replace existing files, create archive if needed, suppress output
 $AR rcs "$ARCHIVE_FILE" "${OBJ_FILES[@]}" || exit 1
 

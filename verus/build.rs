@@ -5,26 +5,39 @@ use std::process::Command;
 fn main() {
     // Get the target architecture from the environment variable set by Cargo
     let target = env::var("TARGET").unwrap();
+    let portable_enabled = env::var("CARGO_FEATURE_PORTABLE").is_ok();
 
-    // --- Skip C/C++ build if target is not SBF ---
-    // The host build (e.g., for tests or native tools) doesn't need libverushash.a
-    if !target.contains("sbf") && !target.contains("bpf") {
+    // --- Skip C/C++ build ONLY if target is not SBF/BPF AND 'portable' feature is disabled ---
+    // We need to build the C library if:
+    // 1. Target is SBF/BPF OR
+    // 2. Target is host AND 'portable' feature is enabled (for tests, etc.)
+    if !target.contains("sbf") && !target.contains("bpf") && !portable_enabled {
         println!(
-            "cargo:info=Skipping verus C/C++ build for non-SBF target: {}",
+            "cargo:info=Skipping verus C/C++ build for host target without 'portable' feature: {}",
             target
         );
-        // Still need to rerun if build script changes, even on host
+        // Still need to rerun if build script changes
         println!("cargo:rerun-if-changed=build.sh");
+        // Also rerun if feature flags change
+        println!("cargo:rerun-if-env-changed=CARGO_FEATURE_PORTABLE");
         return; // Exit early, do not proceed with C build or linking
     }
-    println!(
-        "cargo:info=Detected SBF target ({}), proceeding with verus C/C++ build...",
-        target
-    );
+
+    if portable_enabled && !target.contains("sbf") && !target.contains("bpf") {
+        println!(
+            "cargo:info=Building verus C/C++ library for host target ({}) because 'portable' feature is enabled...",
+            target
+        );
+    } else {
+        println!(
+            "cargo:info=Building verus C/C++ library for SBF target ({})",
+            target
+        );
+    }
     // --- End Skip ---
 
     // -----------------------------------------------------------------------
-    // 1. Run the shell script so libverushash.a exists (ONLY for SBF target)
+    // 1. Run the shell script so libverushash.a exists (for SBF or host+portable)
     // -----------------------------------------------------------------------
     let crate_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let script = crate_dir.join("build.sh");
@@ -93,17 +106,21 @@ fn main() {
     }
 
     // -----------------------------------------------------------------------
-    // 2. Tell Cargo where to find and how to link the static lib (ONLY for SBF)
+    // 2. Tell Cargo where to find and how to link the static lib (if built)
     // -----------------------------------------------------------------------
     // The library `libverushash.a` should now be in `OUT_DIR`.
     println!("cargo:rustc-link-search=native={}", out_dir.display());
     println!("cargo:rustc-link-lib=static=verushash");
 
-    // IMPORTANT: **do NOT link the system C++ std-lib** – it does not exist in
-    //             the Solana BPF loader.
-    // println!("cargo:rustc-link-lib=c++");
+    // IMPORTANT: **do NOT link the system C++ std-lib when building for SBF**
+    // It's okay (and usually necessary) to link it for host builds.
+    // However, the Rust linker seems to handle this automatically for host builds.
+    // Explicitly linking `libc++` might be needed on some systems if linking fails.
+    // if !target.contains("sbf") && !target.contains("bpf") {
+    //     println!("cargo:rustc-link-lib=c++");
+    // }
 
-    // Re-run this script if C/C++ sources change (still relevant for SBF)
+    // Re-run this script if C/C++ sources change
     // Add paths relative to CARGO_MANIFEST_DIR (verus crate root) using the new 'c' directory
     println!("cargo:rerun-if-changed=c/verus_hash.cpp");
     println!("cargo:rerun-if-changed=c/verus_hash.h");
@@ -117,7 +134,8 @@ fn main() {
     // Re-run if the build script itself changes
     println!("cargo:rerun-if-changed=build.sh");
 
-    // Note: The rerun-if-changed for build.sh is now outside this SBF-only block
-    // to ensure Cargo re-evaluates build.rs correctly on host targets too.
-    // The linking instructions above are now correctly inside the SBF-only block.
+    // Note: The rerun-if-changed for build.sh ensures Cargo re-evaluates build.rs
+    // correctly on all targets.
+    // Rerun if feature flags change as well.
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_PORTABLE");
 }
