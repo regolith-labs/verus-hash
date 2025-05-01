@@ -1,0 +1,35 @@
+[package]
+name = "verus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+# tell Cargo there's a native lib called `verushash`
+links = "verushash" # Restore this key
+build = "build.rs"  # Ensure this line is present
+
+[dependencies]
+# No runtime dependencies needed when using the C backend via FFI
+
+[features]
+# Feature to explicitly enable compiling the C backend even on host targets.
+# This is useful for tests to ensure they use the same hash logic as the BPF program.
+portable = []
+# Default enables the portable C backend everywhere (host and BPF).
+# BPF builds will use the C backend regardless due to build.rs logic,
+# but this ensures host builds (like tests) also use it by default.
+default = ["portable"]
+
+[dev-dependencies]
+hex = "0.4"
+
+[build-dependencies]
+# No specific build dependencies needed for just running a script
+
+
+[lib]
+crate-type = ["cdylib", "rlib"] # cdylib is what Solana wants

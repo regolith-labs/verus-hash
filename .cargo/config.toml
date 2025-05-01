@@ -1,0 +1,11 @@
+# .cargo/config.toml
+
+# Set linker arguments specifically for macOS targets (x86_64)
+# This ensures Rust links with the same deployment target used
+# when compiling the C++ code in verus/build.sh.
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-mmacosx-version-min=10.14"]
+
+# If you also build for Apple Silicon (aarch64), you might need a similar entry:
+# [target.aarch64-apple-darwin]
+# rustflags = ["-C", "link-arg=-mmacosx-version-min=11.0"] # Adjust version if needed
