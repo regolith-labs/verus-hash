@@ -27,5 +27,6 @@ void verus_hash_v2(unsigned char *out, const unsigned char *in, unsigned int len
 // Made non-static so it's visible externally.
 void verus_hash_v2_init()
 {
-    load_constants_port(nullptr, (const unsigned char*)"VRSC", 4);
+    // Initialize constants using the primary seed "VRSC" and no secondary seed.
+    tweak_constants((const unsigned char*)"VRSC", nullptr, 4);
 }

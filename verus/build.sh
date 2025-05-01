@@ -49,11 +49,10 @@ fi
 # Use paths relative to the script's location (CRATE_DIR)
 # CRYPTO_SRC now points to verus/c/
 SRC_FILES=(
-  "$CRYPTO_SRC/haraka_portable.c"
-  "$CRYPTO_SRC/haraka_constants.c"
+  "$CRYPTO_SRC/haraka_portable.c" # Reference portable file (includes constants)
   "$CRYPTO_SRC/verus_hash.cpp"
-  "$CRYPTO_SRC/uint256.cpp" # Add uint256.cpp
-  # Add any other *.c/*.cpp sources from verus/c/
+  "$CRYPTO_SRC/uint256.cpp"
+  # common.cpp might be added later if stubbed
 )
 
 # Filter out non-existent files to prevent build errors
@@ -124,10 +123,9 @@ if [[ "$TARGET" == *"bpf"* || "$TARGET" == *"sbf"* ]]; then
   BPF_TARGET_FLAGS="-target bpfel-unknown-unknown -mcpu=generic"
   CFLAGS="$CFLAGS $BPF_TARGET_FLAGS"
   # Add C++17 standard, disable stdlib++, exceptions, RTTI for BPF
-  # Also explicitly disable compiler builtins for memcpy and memset for SBF
-  SBF_NO_BUILTIN_FLAGS="-fno-builtin-memcpy -fno-builtin-memset"
-  CFLAGS="$CFLAGS $BPF_TARGET_FLAGS $SBF_NO_BUILTIN_FLAGS"
-  CXXFLAGS="$CXXFLAGS $BPF_TARGET_FLAGS -std=c++17 -nostdlib++ -fno-exceptions -fno-rtti $SBF_NO_BUILTIN_FLAGS"
+  # Rely on __builtin_memcpy etc. which LLVM provides for SBF
+  CFLAGS="$CFLAGS $BPF_TARGET_FLAGS"
+  CXXFLAGS="$CXXFLAGS $BPF_TARGET_FLAGS -std=c++17 -nostdlib++ -fno-exceptions -fno-rtti"
 else
   echo "build.sh: Using native host flags for $TARGET"
   # Native host specific flags (adjust as needed for different hosts)
@@ -151,6 +149,13 @@ fi
 # This is crucial for BPF compatibility and ensures host uses same logic.
 CFLAGS="$CFLAGS -DVERUSHASH_PORTABLE=1"
 CXXFLAGS="$CXXFLAGS -DVERUSHASH_PORTABLE=1"
+
+# Explicitly disable the memcpy builtin optimization for SBF, as it seems unresolved.
+# This forces the compiler to use our provided implementation in haraka_portable.c
+if [[ "$TARGET" == *"bpf"* || "$TARGET" == *"sbf"* ]]; then
+  CFLAGS="$CFLAGS -fno-builtin-memcpy"
+  CXXFLAGS="$CXXFLAGS -fno-builtin-memcpy"
+fi
 
 # ------------------------------------------------------------------------------
 # 4. Compile every .c / .cpp -> object file

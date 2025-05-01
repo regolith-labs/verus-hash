@@ -3,23 +3,36 @@
 #include <stdint.h>
 #include <stddef.h> // Include for size_t definition
 
+// Define u128 as a struct of two uint64_t for portability
+typedef struct {
+    uint64_t low;
+    uint64_t high;
+} u128;
+
+
 // Add extern "C" guards for C++ compatibility
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+// Public interface
 void haraka_S (unsigned char *out, unsigned long long outlen,
                const unsigned char *in, unsigned long long inlen);
 void haraka256_port(unsigned char *out, const unsigned char *in);
 void haraka512_port(unsigned char *out, const unsigned char *in);
 
-/* exposed so verus_hash.cpp can tweak constants */
-void load_constants_port(const unsigned char *sk,
-                         const unsigned char *pk,
-                         size_t len);
+// Function to tweak constants based on seeds (called by verus_hash_v2_init)
+void tweak_constants(const unsigned char *pk_seed, const unsigned char *sk_seed,
+                     unsigned long long seed_length);
 
-/* Declare our custom memset so it's visible to other files */
+// Keyed hash variant (if needed externally, otherwise could be static)
+// Keep declaration for now, assuming it might be used later or by other C code.
+void haraka512_port_keyed(unsigned char *out, const unsigned char *in, const u128 *rc);
+
+// Declaration for the custom memset implementation in haraka_portable.c
+// Needed by the stub common.cpp generated in build.sh
 void *verus_memset(void *s, int c, size_t n);
+
 
 // Close extern "C" guards
 #ifdef __cplusplus
