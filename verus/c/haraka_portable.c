@@ -1,11 +1,12 @@
 /*--------------------------------------------------------------------
- * haraka_portable.c  –  portable (non-AES-NI) Haraka used by VerusHash
- *                       cleaned for Solana SBF / BPF.
- *   –  no libc, no dynamic allocation, stack-safe (≤512 B)
- *   –  constants & maths 100 % upstream-accurate
+ * haraka_portable.c  –  portable (non-AES-NI) Haraka for VerusHash
+ *                       usable on both desktop and Solana SBF/BPF.
+ *  – no libc, no dynamic allocation
+ *  – stack-safe (≤ 512 B)
  *------------------------------------------------------------------*/
+
 #include "haraka_portable.h"
-#include "common.h"          /* typedefs (u128 etc.) */
+#include "common.h"               /* upstream typedefs (u128, etc.)   */
 
 /*──────────────────────────────────────────────────────────────────*/
 /*  tiny memcpy / memset                                            */
@@ -26,11 +27,11 @@ static inline void *verus_memset(void *p, int c, size_t n)
 #define memset  verus_memset
 
 /*──────────────────────────────────────────────────────────────────*/
-/*  small AES helper tables (exact copy of upstream)                */
+/*  compile-time AES “T” tables (exact upstream maths)              */
 /*──────────────────────────────────────────────────────────────────*/
 #define SAES_WPOLY 0x011b
-#define saes_f2(x)   ((x<<1) ^ ((((x)>>7)&1)*SAES_WPOLY))
-#define saes_f3(x)   (saes_f2(x) ^ (x))
+#define saes_f2(x) ((x<<1) ^ ((((x)>>7)&1)*SAES_WPOLY))
+#define saes_f3(x) (saes_f2(x) ^ (x))
 #define saes_b2w(b0,b1,b2,b3) (((uint32_t)(b3)<<24)|((uint32_t)(b2)<<16)|\
                                ((uint32_t)(b1)<<8)|(b0))
 #define saes_u0(p) saes_b2w(saes_f2(p),       p,       p, saes_f3(p))
@@ -77,7 +78,7 @@ static const uint32_t saes_table[4][256] =
           saes_data(saes_u2), saes_data(saes_u3) };
 
 /*──────────────────────────────────────────────────────────────────*/
-/*  software aesenc (mixcolumns + add-rk)                           */
+/*  software aesenc (mix-columns + add-rk)                          */
 /*──────────────────────────────────────────────────────────────────*/
 static void aesenc(unsigned char *s, const unsigned char *rk)
 {
@@ -117,50 +118,59 @@ static void aesenc(unsigned char *s, const unsigned char *rk)
 static void unpacklo32(unsigned char *t, unsigned char *a, unsigned char *b)
 {
     unsigned char tmp[16];
-    memcpy(tmp, a, 4);            memcpy(tmp+4, b, 4);
-    memcpy(tmp+8, a+4, 4);        memcpy(tmp+12, b+4, 4);
+    memcpy(tmp, a, 4);           memcpy(tmp+4,  b, 4);
+    memcpy(tmp+8, a+4, 4);       memcpy(tmp+12, b+4, 4);
     memcpy(t, tmp, 16);
 }
 static void unpackhi32(unsigned char *t, unsigned char *a, unsigned char *b)
 {
     unsigned char tmp[16];
-    memcpy(tmp, a+8, 4);          memcpy(tmp+4,  b+8, 4);
-    memcpy(tmp+8, a+12,4);        memcpy(tmp+12, b+12,4);
+    memcpy(tmp, a+8, 4);         memcpy(tmp+4,  b+8, 4);
+    memcpy(tmp+8, a+12,4);       memcpy(tmp+12, b+12,4);
     memcpy(t, tmp, 16);
 }
 
 /*──────────────────────────────────────────────────────────────────*/
-/*  reference round-constants                                       */
+/*  round-constants                                                 */
 /*──────────────────────────────────────────────────────────────────*/
-#include "haraka_constants.c"  /* → haraka_rc[40][16] */
+#include "haraka_constants.c"          /* → haraka_rc[40][16] */
 
 static unsigned char rc[40][16];
 static unsigned char rc_sseed[40][16];
 
-/* copy reference once at load-time (no constructor in BPF) */
+/* copy reference RC once – for host unit-tests we use a constructor,
+ * for SBF we use a manually placed startup stub (constructors ignored). */
 static void init_rc(void) { memcpy(rc, haraka_rc, 40*16); }
-__attribute__((section(".text.startup"))) static int _init() { init_rc(); return 0; }
 
+#ifndef __BPF__
+__attribute__((constructor))
+static void init_rc_host(void) { init_rc(); }
+#endif
+
+__attribute__((section(".text.startup")))
+static int _init(void) { init_rc(); return 0; }
+
+/*──────────────────────────────────────────────────────────────────*/
+/*  tweak_constants (VerusHash key-tweak)                            */
 /*──────────────────────────────────────────────────────────────────*/
 void tweak_constants(const unsigned char *pk_seed,
                      const unsigned char *sk_seed,
                      unsigned long long   seed_len)
 {
-    static unsigned char buf[40*16];        /* static → no stack */
+    static unsigned char buf[40*16];       /* static – no stack */
 
-    memcpy(rc, haraka_rc, 40*16);           /* reset */
+    memcpy(rc, haraka_rc, 40*16);
 
-    if (sk_seed) {                          /* sk.seed tweak   */
+    if (sk_seed) {
         haraka_S(buf, 40*16, sk_seed, seed_len);
         memcpy(rc_sseed, buf, 40*16);
     }
-    /* pk.seed tweak (always) */
     haraka_S(buf, 40*16, pk_seed, seed_len);
     memcpy(rc, buf, 40*16);
 }
 
 /*──────────────────────────────────────────────────────────────────*/
-/*  Haraka sponge (haraka_S)                                        */
+/*  Haraka sponge (haraka_S)                                         */
 /*──────────────────────────────────────────────────────────────────*/
 #define HARAKAS_RATE 32
 static void haraka512_perm(unsigned char *o,const unsigned char *i); /* fwd */
@@ -181,11 +191,13 @@ static void haraka_S_absorb(unsigned char *s,unsigned r,
     memcpy(tmp,m,mlen); tmp[mlen]=pad; tmp[r-1]|=0x80;
     for (unsigned j=0;j<r;++j) s[j]^=tmp[j];
 }
+
 static void haraka_S_squeeze(unsigned char *h,unsigned n,
                              unsigned char *s,unsigned r)
 {
     while (n--) { haraka512_perm(s,s); memcpy(h,s,r); h+=r; }
 }
+
 void haraka_S(unsigned char *out,unsigned long long outlen,
               const unsigned char *in,unsigned long long inlen)
 {
@@ -194,6 +206,7 @@ void haraka_S(unsigned char *out,unsigned long long outlen,
     haraka_S_absorb(state,HARAKAS_RATE,in,inlen,0x1F);
     haraka_S_squeeze(out,outlen/32,state,HARAKAS_RATE);
     out += (outlen/32)*32;
+
     if (outlen & 31) {
         haraka_S_squeeze(tmp,1,state,HARAKAS_RATE);
         memcpy(out,tmp,outlen&31);
@@ -201,7 +214,7 @@ void haraka_S(unsigned char *out,unsigned long long outlen,
 }
 
 /*──────────────────────────────────────────────────────────────────*/
-/*  global scratch (avoid stack blow-up on SBF)                     */
+/*  global scratch                                                  */
 /*──────────────────────────────────────────────────────────────────*/
 static unsigned char scratch512[64];
 static unsigned char scratch256[32];
@@ -214,35 +227,39 @@ static void haraka512_perm(unsigned char *out,const unsigned char *in)
 {
     unsigned char *s=scratch512,*tmp=scratch16;
 
-    memcpy(s,in,16);  memcpy(s+16,in+16,16);
-    memcpy(s+32,in+32,16); memcpy(s+48,in+48,16);
+    memcpy(s,in,16);           memcpy(s+16,in+16,16);
+    memcpy(s+32,in+32,16);     memcpy(s+48,in+48,16);
 
     for (unsigned r=0;r<5;++r) {
         for (unsigned j=0;j<2;++j) {
-            aesenc(s      , rc[4*r*2+4*j  ]);
-            aesenc(s+16   , rc[4*r*2+4*j+1]);
-            aesenc(s+32   , rc[4*r*2+4*j+2]);
-            aesenc(s+48   , rc[4*r*2+4*j+3]);
+            aesenc(s     , rc[4*r*2+4*j  ]);
+            aesenc(s+16  , rc[4*r*2+4*j+1]);
+            aesenc(s+32  , rc[4*r*2+4*j+2]);
+            aesenc(s+48  , rc[4*r*2+4*j+3]);
         }
-        unpacklo32(tmp,s,s+16);  unpackhi32(s,s,s+16);
-        unpacklo32(s+16,s+32,s+48); unpackhi32(s+32,s+32,s+48);
-        unpacklo32(s+48,s,s+32);    unpackhi32(s,s,s+32);
-        unpackhi32(s+32,s+16,tmp);  unpacklo32(s+16,s+16,tmp);
+        unpacklo32(tmp ,s   ,s+16);
+        unpackhi32(s   ,s   ,s+16);
+        unpacklo32(s+16,s+32,s+48);
+        unpackhi32(s+32,s+32,s+48);
+        unpacklo32(s+48,s   ,s+32);
+        unpackhi32(s   ,s   ,s+32);
+        unpackhi32(s+32,s+16,tmp );
+        unpacklo32(s+16,s+16,tmp );
     }
     memcpy(out,s,64);
 }
 
-/* feed-forward & truncation */
+/* feed-forward + truncation */
 void haraka512_port(unsigned char *out,const unsigned char *in)
 {
     unsigned char *buf=scratch512;
     haraka512_perm(buf,in);
     for (unsigned i=0;i<64;++i) buf[i]^=in[i];
 
-    memcpy(out      ,buf+ 8,8);
-    memcpy(out+ 8   ,buf+24,8);
-    memcpy(out+16   ,buf+32,8);
-    memcpy(out+24   ,buf+48,8);
+    memcpy(out    ,buf+ 8,8);
+    memcpy(out+ 8 ,buf+24,8);
+    memcpy(out+16 ,buf+32,8);
+    memcpy(out+24 ,buf+48,8);
 }
 
 /*──────────────────────────────────────────────────────────────────*/
@@ -256,8 +273,8 @@ void haraka256_port(unsigned char *out,const unsigned char *in)
 
     for (unsigned r=0;r<5;++r) {
         for (unsigned j=0;j<2;++j) {
-            aesenc(s     , rc[2*r*2+2*j  ]);
-            aesenc(s+16  , rc[2*r*2+2*j+1]);
+            aesenc(s    , rc[2*r*2+2*j  ]);
+            aesenc(s+16 , rc[2*r*2+2*j+1]);
         }
         unpacklo32(tmp,s,s+16);
         unpackhi32(s+16,s,s+16);
@@ -265,4 +282,5 @@ void haraka256_port(unsigned char *out,const unsigned char *in)
     }
     for (unsigned i=0;i<32;++i) out[i]=in[i]^s[i];
 }
-/*──────────────────────────────────────────────────────────────────*/
+
+/* eof */
