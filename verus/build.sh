@@ -50,6 +50,7 @@ fi
 # CRYPTO_SRC now points to verus/c/
 SRC_FILES=(
   "$CRYPTO_SRC/haraka_portable.c"
+  "$CRYPTO_SRC/haraka_constants.c"
   "$CRYPTO_SRC/verus_hash.cpp"
   "$CRYPTO_SRC/uint256.cpp" # Add uint256.cpp
   # Add any other *.c/*.cpp sources from verus/c/

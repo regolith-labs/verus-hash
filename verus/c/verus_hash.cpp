@@ -6,7 +6,7 @@
 
 /* ---- simple portable implementation: 80-byte header only ---- */
 
-void verus_hash_32(unsigned char *out, const unsigned char *in, unsigned int len)
+void verus_hash_v2(unsigned char *out, const unsigned char *in, unsigned int len)
 {
     /* VerusHash 2.0 spec: Haraka-256( header ‖ header ) → LE */
     unsigned char buf[64] = {0};
@@ -22,8 +22,10 @@ void verus_hash_32(unsigned char *out, const unsigned char *in, unsigned int len
 }
 
 /* ------- global init, called once from Rust ---------- */
-__attribute__((constructor))
-static void init_verus_hash()
+// Renamed from init_verus_hash to match Rust FFI declaration.
+// Removed __attribute__((constructor)) as Rust calls this explicitly.
+// Made non-static so it's visible externally.
+void verus_hash_v2_init()
 {
     load_constants_port(nullptr, (const unsigned char*)"VRSC", 4);
 }

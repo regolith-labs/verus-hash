@@ -3,6 +3,11 @@
 #include <stdint.h>
 #include <stddef.h> // Include for size_t definition
 
+// Add extern "C" guards for C++ compatibility
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void haraka_S (unsigned char *out, unsigned long long outlen,
                const unsigned char *in, unsigned long long inlen);
 void haraka256_port(unsigned char *out, const unsigned char *in);
@@ -15,5 +20,10 @@ void load_constants_port(const unsigned char *sk,
 
 /* Declare our custom memset so it's visible to other files */
 void *verus_memset(void *s, int c, size_t n);
+
+// Close extern "C" guards
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* VERUS_HARAKA_PORTABLE_H */
