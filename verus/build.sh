@@ -12,29 +12,22 @@ mkdir -p "$OUT_DIR"
 
 # Root directory of the verus crate
 CRATE_DIR="$(cd "$(dirname "$0")" && pwd)"
-VERUS_SRC="$CRATE_DIR/vendor/veruscoin/src"
-CRYPTO_SRC="$VERUS_SRC/crypto"
+# Point directly to the 'c' directory containing our source files
+CRYPTO_SRC="$CRATE_DIR/c"
 
-# --- 0. Provide missing headers if needed (e.g., librustzcash.h) ---
+# --- 0. Provide missing headers if needed ---
 # Create a stub directory within OUT_DIR to avoid polluting the source tree
 STUB_DIR="$OUT_DIR/stub"
 mkdir -p "$STUB_DIR"
 
 # • dummy librustzcash.h (Verus Hash never uses its contents)
-# Check common locations within the vendor source
-LIBRUSTZCASH_H_PATH=""
-if [[ -f "$VERUS_SRC/rust/include/librustzcash.h" ]]; then
-  LIBRUSTZCASH_H_PATH="$VERUS_SRC/rust/include"
-elif [[ -f "$VERUS_SRC/librustzcash.h" ]]; then
-  LIBRUSTZCASH_H_PATH="$VERUS_SRC"
-else
-  echo '#pragma once' >"$STUB_DIR/librustzcash.h"
-  LIBRUSTZCASH_H_PATH="$STUB_DIR"
-fi
+#   Assume it's not present in verus/c/ and always create the stub.
+echo '#pragma once' >"$STUB_DIR/librustzcash.h"
+LIBRUSTZCASH_H_PATH="$STUB_DIR"
 
-# • stub common.cpp if the fork removed the real one
+# • stub common.cpp if it's not present in verus/c/
 #   (Needed for memory_cleanse if not defined elsewhere)
-COMMON_CPP="$CRYPTO_SRC/common.cpp"
+COMMON_CPP="$CRYPTO_SRC/common.cpp" # Check in the new location
 if [[ ! -f "$COMMON_CPP" ]]; then
   COMMON_CPP="$STUB_DIR/common.cpp"
   # Generate a stub common.cpp compatible with SBF (-nostdlib++)
@@ -54,15 +47,12 @@ fi
 # 1. Source files
 # ------------------------------------------------------------------------------
 # Use paths relative to the script's location (CRATE_DIR)
-# Adjust these paths based on the actual location within vendor/veruscoin/src/
+# CRYPTO_SRC now points to verus/c/
 SRC_FILES=(
   "$CRYPTO_SRC/haraka_portable.c"
-  # "$CRYPTO_SRC/haraka256_portable.c" # Removed - Not found or needed for v2
-  # "$CRYPTO_SRC/haraka512_portable.c" # Removed - Not found or needed for v2
   "$CRYPTO_SRC/verus_hash.cpp"
-  # Add any extra *.c/*.cpp sources your fork needs, e.g.:
-  # "$CRYPTO_SRC/verus_clhash_portable.cpp"
-  # "$COMMON_CPP" # Only if needed and stubbed above or exists
+  "$CRYPTO_SRC/uint256.cpp" # Add uint256.cpp
+  # Add any other *.c/*.cpp sources from verus/c/
 )
 
 # Filter out non-existent files to prevent build errors
@@ -85,7 +75,7 @@ fi
 # ------------------------------------------------------------------------------
 # Use paths relative to the script's location (CRATE_DIR)
 INC="-I $CRYPTO_SRC \
-     -I $VERUS_SRC \
+
      -I $LIBRUSTZCASH_H_PATH \
      -I $STUB_DIR" # Include stub dir for generated headers/sources
 

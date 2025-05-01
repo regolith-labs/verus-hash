@@ -8,11 +8,11 @@
 // in haraka_portable.c and avoiding linker conflicts.
 // Use the standard C definition of size_t
 #include <stddef.h>
-// Declare the functions without static to make them visible to other C files
-// The static *definitions* in haraka_portable.c provide the implementation.
-void *memcpy(void *dest, const void *src, size_t n);
-void *memset(void *s, int c, size_t n);
-int memcmp(const void *s1, const void *s2, size_t n);
+// Declare the functions as static to match their definitions in haraka_portable.c.
+// This gives them internal linkage, preventing linker conflicts with Rust's builtins.
+static void *memcpy(void *dest, const void *src, size_t n);
+static void *memset(void *s, int c, size_t n);
+static int memcmp(const void *s1, const void *s2, size_t n);
 
 // Always use the portable __m128i definition for SBF build
 // Define a compatible type for __m128i when using portable C code

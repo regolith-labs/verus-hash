@@ -1,109 +1,3 @@
-//! Rust wrapper for the VerusHash V2 C++ implementation.
-
-// Conditionally enable no_std for BPF target
-#![cfg_attr(target_arch = "bpf", no_std)]
-
-use cfg_if::cfg_if;
-
-// Use cfg_if to conditionally define the FFI bindings and functions
-cfg_if! {
-    // Define FFI bindings and functions if compiling for SBF/BPF
-    // OR if the "portable" feature is enabled (default for host).
-    if #[cfg(any(target_arch = "bpf", feature = "portable"))] {
-        extern "C" {
-            /// Initializes the VerusHash V2 library internals.
-            /// Must be called once before using verus_hash_v2.
-            fn verus_hash_v2_init();
-
-            /// Computes the VerusHash V2 for the given input data.
-            ///
-            /// # Arguments
-            ///
-            /// * `out` - A mutable pointer to a 32-byte buffer where the hash result will be written.
-            /// * `in_` - A pointer to the input data buffer.
-            /// * `len` - The length of the input data buffer in bytes.
-            fn verus_hash_v2(out: *mut u8, in_: *const u8, len: usize);
-        }
-
-        /// Initializes the VerusHash V2 C library.
-        ///
-        /// This function should be called once before any hashing operations,
-        /// especially in environments where static initializers might not run automatically.
-        /// It's safe to call multiple times.
-        pub fn init() {
-            // Safety: Calling an external C function that is expected to initialize
-            // internal state. Assumed to be safe and idempotent.
-            unsafe { verus_hash_v2_init() };
-        }
-
-        /// Computes the VerusHash V2 for the given data slice.
-        ///
-        /// This function initializes the library if needed and then calls the C implementation.
-        ///
-        /// # Arguments
-        ///
-        /// * `data` - A slice containing the input data to hash.
-        ///
-        /// # Returns
-        ///
-        /// A 32-byte array containing the VerusHash V2 result.
-        pub fn verus_hash(data: &[u8]) -> [u8; 32] {
-            // Ensure the library is initialized (safe to call multiple times)
-            init();
-
-            let mut out = [0u8; 32];
-            // Safety: Calling an external C function with valid pointers and length.
-            // `out.as_mut_ptr()` provides a valid pointer to a 32-byte buffer.
-            // `data.as_ptr()` provides a valid pointer to the input data.
-            // `data.len()` provides the correct length of the input data.
-            // The C function `verus_hash_v2` is expected to write 32 bytes to `out`.
-            unsafe {
-                verus_hash_v2(out.as_mut_ptr(), data.as_ptr(), data.len());
-            }
-            out
-        }
-
-        /// Verifies if the VerusHash V2 of the data is less than or equal to the target.
-        ///
-        /// Note: The comparison is done on the big-endian representation of the hash.
-        ///
-        /// # Arguments
-        ///
-        /// * `data` - The input data to hash and verify.
-        /// * `target_be` - The 32-byte target hash in big-endian format.
-        ///
-        /// # Returns
-        ///
-        /// `true` if the big-endian hash of `data` is less than or equal to `target_be`,
-        /// `false` otherwise.
-        pub fn verify_hash(data: &[u8], target_be: &[u8; 32]) -> bool {
-            // Compute the hash (result is little-endian)
-            let le = verus_hash(data);
-
-            // Convert the little-endian hash result to big-endian for comparison
-            let mut be = [0u8; 32];
-            for i in 0..32 {
-                be[i] = le[31 - i];
-            }
-
-            // Compare the big-endian hash with the big-endian target
-            be <= *target_be
-        }
-
-    } else {
-        // If neither SBF/BPF target nor "portable" feature, provide stub functions
-        // or a compile error. A compile error is clearer.
-        compile_error!(
-            "The 'verus' crate requires either the 'portable' feature to be enabled \
-             or the target architecture to be SBF/BPF ('--target bpfel-unknown-unknown')."
-        );
-
-        // --- Alternatively, provide stub functions that panic ---
-        // pub fn init() { panic!("VerusHash C backend not compiled for this target/feature set."); }
-        // pub fn verus_hash(_data: &[u8]) -> [u8; 32] { panic!("VerusHash C backend not compiled for this target/feature set."); }
-        // pub fn verify_hash(_data: &[u8], _target_be: &[u8; 32]) -> bool { panic!("VerusHash C backend not compiled for this target/feature set."); }
-    }
-}
 //! Safe Rust wrapper around VerusHash 2.0 using the portable C backend.
 
 // Conditionally allow std library features only when not building for BPF.
@@ -125,28 +19,55 @@ mod backend {
         // Note: The exact name might differ (e.g., verus_hash_32); adjust if needed based on build.sh/C code.
         fn verus_hash_v2(out_ptr: *mut u8, in_ptr: *const u8, len: usize);
 
-        // If the C library requires an initialization function, declare it here.
-        // Example: fn verus_hash_v2_init();
-        // If initialization is needed, use std::sync::Once on host or handle appropriately in BPF.
-        // Assuming no explicit init needed for now based on previous context.
+        // FFI declaration for the VerusHash initialization function.
+        fn verus_hash_v2_init();
+    }
+
+    // Use std::sync::Once for thread-safe initialization on host targets.
+    // BPF is single-threaded, so Once is not needed there.
+    #[cfg(not(target_arch = "bpf"))]
+    use std::sync::Once;
+
+    #[cfg(not(target_arch = "bpf"))]
+    static INIT: Once = Once::new();
+
+    // BPF needs a simple flag for initialization check.
+    #[cfg(target_arch = "bpf")]
+    static mut INITIALIZED: bool = false;
+
+    /// Initializes the VerusHash C library. Safe to call multiple times.
+    fn init_internal() {
+        #[cfg(not(target_arch = "bpf"))]
+        {
+            // Use Once::call_once for thread-safe initialization on host.
+            INIT.call_once(|| {
+                // Safety: Calling an external C function expected to initialize internal state.
+                // Assumed to be safe when called once.
+                unsafe { verus_hash_v2_init() };
+            });
+        }
+        #[cfg(target_arch = "bpf")]
+        {
+            // Safety: Accessing static mut in BPF (single-threaded context).
+            // Check and set flag to ensure init runs only once.
+            unsafe {
+                if !INITIALIZED {
+                    verus_hash_v2_init();
+                    INITIALIZED = true;
+                }
+            }
+        }
     }
 
     /// Compute the little-endian VerusHash 2.0 of `data` using the C backend.
     pub fn verus_hash(data: &[u8]) -> [u8; 32] {
-        // If initialization is required:
-        // #[cfg(not(target_arch = "bpf"))] // Host needs Once for thread safety
-        // {
-        //     static INIT: std::sync::Once = std::sync::Once::new();
-        //     INIT.call_once(|| unsafe { verus_hash_v2_init() });
-        // }
-        // #[cfg(target_arch = "bpf")] // BPF is single-threaded, call directly (if needed)
-        // {
-        //     // Handle BPF initialization if required, maybe check a static bool
-        // }
+        // Ensure the C library is initialized before hashing.
+        init_internal();
 
         let mut out = [0u8; 32];
         // Call the FFI function. It's unsafe because it involves FFI.
-        // Safety relies on the C implementation being correct and thread-safe (if used concurrently).
+        // Safety relies on the C implementation being correct and thread-safe (if used concurrently),
+        // and that init_internal() has been called.
         unsafe { verus_hash_v2(out.as_mut_ptr(), data.as_ptr(), data.len()) };
         out
     }
