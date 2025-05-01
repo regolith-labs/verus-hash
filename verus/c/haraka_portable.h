@@ -1,43 +1,35 @@
-#ifndef VERUS_HARAKA_PORTABLE_H
-#define VERUS_HARAKA_PORTABLE_H
-#include <stdint.h>
-#include <stddef.h> // Include for size_t definition
+/*───────────────────────────────────────────────────────────*
+ *  haraka_portable.h  –  public API for the portable Haraka *
+ *                       (desktop & Solana SBF/BPF)          *
+ *───────────────────────────────────────────────────────────*/
+#ifndef HARAKA_PORTABLE_H
+#define HARAKA_PORTABLE_H
 
-// Define u128 as a struct of two uint64_t for portability
-typedef struct {
-    uint64_t low;
-    uint64_t high;
-} u128;
+#include <stdint.h>     /* uint8_t / uint64_t */
+#include <stddef.h>     /* size_t              */
 
-
-// Add extern "C" guards for C++ compatibility
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Public interface
-void haraka_S (unsigned char *out, unsigned long long outlen,
-               const unsigned char *in, unsigned long long inlen);
-void haraka256_port(unsigned char *out, const unsigned char *in);
-void haraka512_port(unsigned char *out, const unsigned char *in);
+/* —―― tiny, libc-free memcpy / memset (exported) ――― */
+void *verus_memcpy(void *dst, const void *src, size_t n);
+void *verus_memset(void *dst, int c,          size_t n);
 
-// Function to tweak constants based on seeds (called by verus_hash_v2_init)
-void tweak_constants(const unsigned char *pk_seed, const unsigned char *sk_seed,
-                     unsigned long long seed_length);
+/* —―― optional key-tweak (used by VerusHash) ――― */
+void tweak_constants(const uint8_t *pk_seed,
+                     const uint8_t *sk_seed,
+                     uint64_t       seed_len);
 
-// Keyed hash variant (if needed externally, otherwise could be static)
-// Keep declaration for now, assuming it might be used later or by other C code.
-void haraka512_port_keyed(unsigned char *out, const unsigned char *in, const u128 *rc);
+/* The “Haraka-S” sponge (only needed for tweak_constants) */
+void haraka_S(uint8_t       *out, uint64_t outlen,
+              const uint8_t *in,  uint64_t inlen);
 
-// Declaration for the custom memset implementation in haraka_portable.c
-// Needed by verus_hash.cpp and potentially stub common.cpp
-void *verus_memset(void *s, int c, size_t n);
-void *verus_memcpy(void *dest, const void *src, size_t n);
+/* Public permutations with feed-forward (used by verus_hash.cpp) */
+void haraka256_port(uint8_t *out, const uint8_t *in);
+void haraka512_port(uint8_t *out, const uint8_t *in);
 
-
-// Close extern "C" guards
 #ifdef __cplusplus
-}
+} /* extern "C" */
 #endif
-
-#endif /* VERUS_HARAKA_PORTABLE_H */
+#endif /* HARAKA_PORTABLE_H */
