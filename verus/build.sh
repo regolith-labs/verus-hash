@@ -153,8 +153,8 @@ CXXFLAGS="$CXXFLAGS -DVERUSHASH_PORTABLE=1"
 # Explicitly disable the memcpy builtin optimization for SBF, as it seems unresolved.
 # This forces the compiler to use our provided implementation in haraka_portable.c
 if [[ "$TARGET" == *"bpf"* || "$TARGET" == *"sbf"* ]]; then
-  CFLAGS="$CFLAGS -fno-builtin-memcpy"
-  CXXFLAGS="$CXXFLAGS -fno-builtin-memcpy"
+  CFLAGS="$CFLAGS -fno-builtin-memcpy -fno-builtin-memset"
+  CXXFLAGS="$CXXFLAGS -fno-builtin-memcpy -fno-builtin-memset"
 fi
 
 # ------------------------------------------------------------------------------
