@@ -2,6 +2,9 @@
 resolver = "2"
 members = ["verus", "program"]
 
+# Remove the original verus crate definition if it exists here
+# (It shouldn't based on the provided file, but double-checking)
+
 [workspace.package]
 version = "0.0.1"
 edition = "2021"

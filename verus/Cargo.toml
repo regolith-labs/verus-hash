@@ -13,7 +13,7 @@ links = "verushash" # Restore this key
 build = "build.rs"  # Ensure this line is present
 
 [dependencies]
-# No runtime dependencies needed when using the C backend via FFI
+cfg-if = "1.0"
 
 [features]
 # Feature to explicitly enable compiling the C backend even on host targets.
@@ -28,8 +28,7 @@ default = ["portable"]
 hex = "0.4"
 
 [build-dependencies]
-# No specific build dependencies needed for just running a script
-
+cc = "1.0"
 
 [lib]
 crate-type = ["cdylib", "rlib"] # cdylib is what Solana wants
