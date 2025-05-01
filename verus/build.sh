@@ -36,9 +36,9 @@ if [[ ! -f "$COMMON_CPP" ]]; then
 #include "haraka_portable.h" // Use our header for memset/size_t
 
 // Provide a basic implementation if the original is missing.
-// Calls the memset declared in haraka_portable.h (implemented in haraka_portable.c)
+// Calls the verus_memset declared in haraka_portable.h (implemented in haraka_portable.c)
 extern "C" void memory_cleanse(void* p, size_t n) {
-    memset(p, 0, n);
+    verus_memset(p, 0, n); // Use our custom memset
 }
 CPP
 fi
@@ -123,8 +123,10 @@ if [[ "$TARGET" == *"bpf"* || "$TARGET" == *"sbf"* ]]; then
   BPF_TARGET_FLAGS="-target bpfel-unknown-unknown -mcpu=generic"
   CFLAGS="$CFLAGS $BPF_TARGET_FLAGS"
   # Add C++17 standard, disable stdlib++, exceptions, RTTI for BPF
-  CXXFLAGS="$CXXFLAGS $BPF_TARGET_FLAGS -std=c++17 -nostdlib++ -fno-exceptions -fno-rtti"
-  # -fno-builtin-memcpy is no longer needed as we renamed our functions
+  # Also explicitly disable compiler builtins for memcpy and memset for SBF
+  SBF_NO_BUILTIN_FLAGS="-fno-builtin-memcpy -fno-builtin-memset"
+  CFLAGS="$CFLAGS $BPF_TARGET_FLAGS $SBF_NO_BUILTIN_FLAGS"
+  CXXFLAGS="$CXXFLAGS $BPF_TARGET_FLAGS -std=c++17 -nostdlib++ -fno-exceptions -fno-rtti $SBF_NO_BUILTIN_FLAGS"
 else
   echo "build.sh: Using native host flags for $TARGET"
   # Native host specific flags (adjust as needed for different hosts)
