@@ -30,8 +30,9 @@ void tweak_constants(const unsigned char *pk_seed, const unsigned char *sk_seed,
 void haraka512_port_keyed(unsigned char *out, const unsigned char *in, const u128 *rc);
 
 // Declaration for the custom memset implementation in haraka_portable.c
-// Needed by the stub common.cpp generated in build.sh
+// Needed by verus_hash.cpp and potentially stub common.cpp
 void *verus_memset(void *s, int c, size_t n);
+void *verus_memcpy(void *dest, const void *src, size_t n);
 
 
 // Close extern "C" guards

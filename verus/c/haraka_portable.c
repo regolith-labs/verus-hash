@@ -2,8 +2,8 @@
 #include "common.h" // Include common definitions
 
 // Define our own inline memcpy to avoid conflicts with builtins/libc
-// Make it static inline so it doesn't generate an external symbol unless used.
-static inline void *verus_memcpy(void *dest, const void *src, size_t n) {
+// Make it inline (but not static) so it can be used by other files like verus_hash.cpp
+inline void *verus_memcpy(void *dest, const void *src, size_t n) {
     unsigned char *d = (unsigned char *)dest;
     const unsigned char *s = (const unsigned char *)src;
     for (size_t i = 0; i < n; i++) {
@@ -12,9 +12,22 @@ static inline void *verus_memcpy(void *dest, const void *src, size_t n) {
     return dest;
 }
 
-// Use a macro to replace all calls to 'memcpy' within this file
-// with our 'verus_memcpy' at compile time.
+// Define our own inline memset to avoid conflicts with builtins/libc
+// Make it inline (but not static) so it can be used by other files like verus_hash.cpp
+inline void *verus_memset(void *s, int c, size_t n) {
+    unsigned char *p = (unsigned char *)s;
+    unsigned char val = (unsigned char)c;
+    for (size_t i = 0; i < n; i++) {
+        p[i] = val;
+    }
+    return s;
+}
+
+
+// Use macros to replace all calls to 'memcpy' and 'memset' within this file
+// with our custom versions at compile time.
 #define memcpy verus_memcpy
+#define memset verus_memset
 
 // Forward declarations for static helper functions
 static void haraka512_perm(unsigned char *out, const unsigned char *in);
