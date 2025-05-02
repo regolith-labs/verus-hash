@@ -30,7 +30,8 @@ void verus_hash_v2(unsigned char *out, const unsigned char *in, size_t len)
         // Let's follow the provided code block exactly for the sponge part.
         // Original provided code: for (int j=0;j<64;++j) S[j] ^= tmp[j]; /* feed-forward */
         // Let's stick to the provided code block:
-        for (int j=0;j<64;++j) S[j] = tmp[j]; // Update state S with the permuted output tmp
+        // Restore the original feed-forward XOR step to match reference implementation
+        for (int j=0;j<64;++j) S[j] ^= tmp[j]; // XOR feed-forward
         i += 32;
     }
 
