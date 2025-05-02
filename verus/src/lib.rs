@@ -187,4 +187,54 @@ mod tests {
 
     // Removed generate_constants_file test.
     // Constants are now generated automatically by the build.rs script.
+} // End of tests module
+
+/// Converts a difficulty value into a 32-byte big-endian target.
+/// target = floor(2^256 / (difficulty + 1)) approximately, or more simply
+/// target = MAX_TARGET >> difficulty
+/// where MAX_TARGET is 2^256 - 1 ([0xFF; 32]).
+/// Made public for use in tests and client.
+pub fn difficulty_to_target(difficulty: u64) -> [u8; 32] {
+    if difficulty >= 256 {
+        // Difficulty is too high, target is effectively zero.
+        return [0u8; 32];
+    }
+
+    let mut target = [0xFFu8; 32];
+
+    // Calculate the number of full byte shifts (integer division)
+    let byte_shifts = (difficulty / 8) as usize;
+    // Calculate the remaining bit shifts
+    let bit_shifts = (difficulty % 8) as u8;
+
+    // Apply bit shifts first (working from right-most byte to left-most)
+    // This shifts the entire 256-bit value right by `bit_shifts`.
+    if bit_shifts > 0 {
+        let mut carry = 0u8;
+        // Iterate from left (MSB) to right (LSB) of the target array
+        for i in 0..32 {
+            let current_byte = target[i];
+            // Shift the current byte right, and bring in the carry from the left byte's shift-out
+            target[i] = (current_byte >> bit_shifts) | carry;
+            // Calculate the new carry for the next byte (to the right)
+            // These are the bits shifted out from the current byte, positioned correctly.
+            carry = current_byte << (8 - bit_shifts); // No need for & 0xFF, u8 handles wrap
+        }
+    }
+
+    // Apply byte shifts (shifting right, filling with zeros from the left)
+    if byte_shifts > 0 {
+        // Ensure we don't shift beyond the array bounds
+        let shift_limit = 32 - byte_shifts;
+        // Shift existing bytes to the right
+        for i in (0..shift_limit).rev() {
+            target[i + byte_shifts] = target[i];
+        }
+        // Fill the newly opened space at the left (MSB) with zeros
+        for i in 0..byte_shifts {
+            target[i] = 0;
+        }
+    }
+
+    target
 }

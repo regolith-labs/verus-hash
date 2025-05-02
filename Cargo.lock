@@ -7344,7 +7344,11 @@ dependencies = [
  "anyhow",
  "dirs",
  "solana-client",
+ "solana-program-test",
  "solana-sdk",
+ "tokio",
+ "verus",
+ "verus-program",
 ]
 
 [[package]]

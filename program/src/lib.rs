@@ -19,104 +19,118 @@ solana_program::entrypoint!(process_instruction);
 
 pub fn process_instruction(
     _program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    data: &[u8],
+    _accounts: &[AccountInfo], // Marked unused for now
+    ix_data: &[u8],
 ) -> ProgramResult {
-    // Basic validation
-    if data.len() != std::mem::size_of::<Args>() {
-        return Err(ProgramError::InvalidInstructionData);
+    // Match on the first byte (opcode)
+    match ix_data.first() {
+        // Opcode 0: Placeholder for original logic (if needed later)
+        // Currently, the original logic required specific accounts and Args struct.
+        // Re-implementing it here would require parsing Args from ix_data[1..]
+        // and accessing accounts. For now, return error.
+        Some(0) => {
+            // Example: If you wanted to keep the old logic for opcode 0
+            /*
+            if ix_data.len() - 1 != std::mem::size_of::<Args>() {
+                return Err(ProgramError::InvalidInstructionData);
+            }
+            let args = Args::try_from_bytes(&ix_data[1..])?;
+            let accounts_iter = &mut _accounts.iter();
+            let signer_info = next_account_info(accounts_iter)?;
+            if !signer_info.is_signer {
+                return Err(ProgramError::MissingRequiredSignature);
+            }
+            let challenge = [255u8; 32]; // Placeholder
+            let mut hash_data = Vec::with_capacity(32 + 32 + 8);
+            hash_data.extend_from_slice(&challenge);
+            hash_data.extend_from_slice(signer_info.key.as_ref());
+            hash_data.extend_from_slice(&args.nonce);
+            let target_be = difficulty_to_target(args.difficulty);
+            sol_log_compute_units();
+            if !verus::verify_hash(&hash_data, &target_be) {
+                return Err(ProgramError::Custom(2)); // Error 2: Hash verification failed
+            }
+            sol_log_compute_units();
+            Ok(())
+            */
+            // For now, just return an error indicating opcode 0 is not implemented
+            Err(ProgramError::InvalidInstructionData) // Or a custom error
+        }
+
+        // ---------------------------------------------------------------
+        // NEW OPCODE 1  → server-side verify
+        // payload = 4-byte little-endian msg_len ‖ msg ‖ 32-byte target BE
+        // Accounts are not used for this opcode.
+        // ---------------------------------------------------------------
+        Some(1) => {
+            sol_log_compute_units(); // Log CUs at start
+            let mut p = &ix_data[1..]; // Start after the opcode byte
+
+            // Check minimum length for msg_len
+            if p.len() < 4 {
+                return Err(ProgramError::InvalidInstructionData); // Need at least 4 bytes for length
+            }
+            // Safely parse msg_len from the first 4 bytes
+            let msg_len_bytes: [u8; 4] = p[..4]
+                .try_into()
+                .map_err(|_| ProgramError::InvalidInstructionData)?;
+            let msg_len = u32::from_le_bytes(msg_len_bytes) as usize;
+
+            // Advance the slice past the length field
+            p = &p[4..];
+
+            // Check minimum length for msg + target
+            if p.len() < msg_len + 32 {
+                return Err(ProgramError::InvalidInstructionData); // Not enough data for msg and target
+            }
+
+            // Slice the message and target
+            let msg = &p[..msg_len];
+            let target = &p[msg_len..msg_len + 32];
+
+            // Safely convert target slice to fixed-size array
+            let target_be: &[u8; 32] = target
+                .try_into()
+                .map_err(|_| ProgramError::InvalidInstructionData)?; // Should match size 32
+
+            // Perform the verification using the verus crate
+            if verus::verify_hash(msg, target_be) {
+                sol_log_compute_units(); // Log CUs on success
+                Ok(())
+            } else {
+                // Use a distinct error code for failed hash verification
+                Err(ProgramError::Custom(1)) // Error 1: Hash verification failed (hash > target)
+            }
+        }
+
+        // Handle unknown opcodes or empty instruction data
+        _ => Err(ProgramError::InvalidInstructionData),
     }
-    let args = Args::try_from_bytes(data)?;
-    let accounts_iter = &mut accounts.iter();
-    let signer_info = next_account_info(accounts_iter)?;
-
-    // Ensure signer is valid
-    if !signer_info.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-
-    // TODO: Derive the actual challenge based on program state/inputs
-    let challenge = [255u8; 32]; // Placeholder challenge
-
-    // Construct the data to be hashed: challenge + signer pubkey + nonce
-    let mut hash_data = Vec::with_capacity(32 + 32 + 8);
-    hash_data.extend_from_slice(&challenge);
-    hash_data.extend_from_slice(signer_info.key.as_ref());
-    hash_data.extend_from_slice(&args.nonce);
-
-    // Calculate the target from the provided difficulty
-    let target_be = difficulty_to_target(args.difficulty);
-
-    sol_log_compute_units(); // Log CUs before hash
-
-    // Verify the hash against the target
-    if !verus::verify_hash(&hash_data, &target_be) {
-        // Use a distinct error code for failed hash verification
-        return Err(ProgramError::Custom(2)); // Error 2: Hash verification failed
-    }
-
-    sol_log_compute_units(); // Log CUs after hash
-    Ok(())
 }
 
 /// Converts a difficulty value into a 32-byte big-endian target.
 /// target = floor(2^256 / (difficulty + 1)) approximately, or more simply
-/// target = MAX_TARGET >> difficulty
-/// where MAX_TARGET is 2^256 - 1 ([0xFF; 32]).
-/// Made public for use in tests.
-pub fn difficulty_to_target(difficulty: u64) -> [u8; 32] {
-    if difficulty >= 256 {
-        // Difficulty is too high, target is effectively zero.
-        return [0u8; 32];
-    }
+// difficulty_to_target moved to verus crate
 
-    let mut target = [0xFFu8; 32];
-
-    // Calculate the number of full byte shifts (integer division)
-    let byte_shifts = (difficulty / 8) as usize;
-    // Calculate the remaining bit shifts
-    let bit_shifts = (difficulty % 8) as u8;
-
-    // Apply bit shifts first (working from right-most byte to left-most)
-    // This shifts the entire 256-bit value right by `bit_shifts`.
-    if bit_shifts > 0 {
-        let mut carry = 0u8;
-        for i in 0..32 {
-            // Iterate from left (MSB) to right (LSB)
-            let current_byte = target[i];
-            // Shift the current byte right, and bring in the carry from the left byte's shift-out
-            target[i] = (current_byte >> bit_shifts) | carry;
-            // Calculate the new carry for the next byte (to the right)
-            // These are the bits shifted out from the current byte, positioned correctly.
-            carry = (current_byte << (8 - bit_shifts)) & 0xFF;
-        }
-    }
-
-    // Apply byte shifts (shifting right, filling with zeros from the left)
-    if byte_shifts > 0 {
-        // Shift existing bytes to the right
-        for i in (byte_shifts..32).rev() {
-            target[i] = target[i - byte_shifts];
-        }
-        // Fill the newly opened space at the left (MSB) with zeros
-        for i in 0..byte_shifts {
-            target[i] = 0;
-        }
-    }
-
-    target
-}
-
-// Updated verify helper function (removed digest)
+// Updated verify helper function (removed digest) - THIS IS LIKELY BROKEN NOW
+// as process_instruction expects opcode 0, which is currently unimplemented.
+// Keep it for now, but it needs adjustment if opcode 0 is implemented.
 pub fn verify(signer: Pubkey, difficulty: u64, nonce: [u8; 8]) -> Instruction {
+    // This constructs data for the OLD format (Args struct).
+    // To call the new opcode 1, a different helper is needed.
+    // To call opcode 0, it needs to be implemented first.
+    let args_data = Args { difficulty, nonce }.to_bytes().to_vec();
+    let mut instruction_data = vec![0u8]; // Prepend opcode 0
+    instruction_data.extend(args_data);
+
     Instruction {
         program_id: crate::id(),
-        accounts: vec![AccountMeta::new(signer, true)],
-        data: Args { difficulty, nonce }.to_bytes().to_vec(),
+        accounts: vec![AccountMeta::new(signer, true)], // Opcode 0 might need this
+        data: instruction_data,
     }
 }
 
-// Updated Args struct (removed digest)
+// Updated Args struct (removed digest) - Only used by the (broken) verify helper above.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct Args {
@@ -129,7 +143,9 @@ impl Args {
         bytemuck::bytes_of(self)
     }
 
+    // This function is likely unused now as process_instruction uses ix_data directly
+    #[allow(dead_code)]
     fn try_from_bytes(data: &[u8]) -> Result<&Self, ProgramError> {
-        bytemuck::try_from_bytes::<Self>(&data).or(Err(ProgramError::InvalidAccountData))
+        bytemuck::try_from_bytes::<Self>(data).or(Err(ProgramError::InvalidAccountData))
     }
 }
