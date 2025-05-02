@@ -56,24 +56,63 @@ fn main() {
         generator_src_path.display()
     );
 
-    // Compile generate_constants.c using the host C compiler
-    cc::Build::new()
-        .file(&generator_src_path)
-        .opt_level(2) // Optimize the generator a bit
-        .try_compile("generate_constants") // Output executable name
-        .expect("Failed to compile constants generator C code");
+    // Compile generate_constants.c using the host C compiler, then link it.
+    // let host_triple = env::var("HOST").expect("HOST environment variable not set"); // Not needed for direct clang call
+    let generator_obj_path = out_dir.join("generate_constants.o"); // Define object path
+                                                                   // Note: generator_exe_path is already defined earlier
 
+    // Step 1: Compile generate_constants.c to an object file using the host compiler directly
+    println!(
+        "cargo:info=Compiling constants generator source: {}",
+        generator_src_path.display()
+    );
+    let compile_status = Command::new("clang") // Use host clang directly
+        .arg("-c") // Compile only flag
+        .arg(&generator_src_path) // Input C file
+        .arg("-o") // Output flag
+        .arg(&generator_obj_path) // Specify object file output path
+        .arg("-O2") // Add optimization
+        // Add host target flags if necessary (e.g., for macOS)
+        // .arg(format!("--target={}", host_triple)) // Might be needed
+        .status()
+        .expect("Failed to invoke host compiler (clang) for constants generator source");
+
+    if !compile_status.success() {
+        panic!(
+            "Failed to compile constants generator source: {}",
+            compile_status
+        );
+    }
+
+    // Step 2: Link the object file into an executable using the host linker (clang)
+    println!(
+        "cargo:info=Linking constants generator object: {}",
+        generator_obj_path.display()
+    );
+    let link_status = Command::new("clang") // Use host clang for linking
+        .arg(&generator_obj_path)
+        .arg("-o") // Output flag
+        .arg(&generator_exe_path) // Specify executable output path
+        .status()
+        .expect("Failed to invoke host linker (clang) for constants generator");
+
+    if !link_status.success() {
+        panic!(
+            "Failed to link constants generator executable: {}",
+            link_status
+        );
+    }
+
+    // Step 3: Run the linked executable
     println!(
         "cargo:info=Running constants generator: {}",
         generator_exe_path.display()
     );
-
-    // Run the compiled generator and capture its output
-    let generator_cmd = Command::new(&generator_exe_path)
+    let generator_cmd = Command::new(&generator_exe_path) // Use the correct path to the linked exe
         .stdout(Stdio::piped()) // Capture stdout
         .stderr(Stdio::piped()) // Capture stderr
         .spawn()
-        .expect("Failed to spawn constants generator");
+        .expect("Failed to spawn linked constants generator"); // Should find the exe now
 
     let output = generator_cmd
         .wait_with_output()

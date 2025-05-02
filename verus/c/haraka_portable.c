@@ -105,24 +105,14 @@ static void unpackhi32(uint8_t *t, uint8_t *a, uint8_t *b)
 }
 
 /*──────────────── round constants ───────────────────────────────*/
-// Include the generated constants file.
-// The build system (build.rs -> build.sh) ensures this file exists in OUT_DIR
-// and adds OUT_DIR to the include paths.
-#include "haraka_rc_vrsc.inc"
-
 // Define the static constant array using the included initializer.
+// The build system (build.rs -> build.sh) ensures haraka_rc_vrsc.inc exists in OUT_DIR
+// and adds OUT_DIR to the include paths (-I $OUT_DIR).
 // The name `haraka_rc_vrsc` matches the variable name expected by the include.
-// If the include file provides ` { { ... }, { ... } ... }; `, this defines the array.
+// The include file provides the full initializer structure: `{ {..}, ... };`
 static const uint8_t rc[40][16] =
 #include "haraka_rc_vrsc.inc"
-// Note: Some compilers might warn about the re-include, but it's a common pattern.
-// Alternatively, the .inc file could just contain the `{...}, ...` part without the outer braces and semicolon.
-// Let's assume the generator produces the full ` { {..}, ... }; ` structure.
-// If it only produces the inner content, the line above should be:
-// static const uint8_t rc[40][16] = {
-// #include "haraka_rc_vrsc.inc"
-// };
-// The current generator produces the full structure including the outer braces and semicolon.
+; // Add semicolon here for clarity, although the include likely provides it.
 
 /*──────────────── Internal Sponge Utilities (Haraka-S) ──────────*/
 // Sponge logic is no longer needed here as constants are pre-generated.
