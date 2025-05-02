@@ -28,7 +28,7 @@ fn main() -> anyhow::Result<()> {
     // Using a placeholder challenge for now. In a real scenario, this might
     // come from the network state or a specific account.
     let challenge = [255u8; 32];
-    let difficulty: u64 = 20; // Example difficulty
+    let difficulty: u64 = 5; // Lowered difficulty significantly for faster testing
 
     // 3) Find a valid nonce
     println!(
@@ -86,8 +86,21 @@ fn main() -> anyhow::Result<()> {
 /// Finds a nonce that satisfies the difficulty requirement using VerusHash.
 fn find_nonce(challenge: &[u8; 32], signer: &Pubkey, difficulty: u64) -> [u8; 8] {
     // Use the difficulty_to_target function from the verus crate
-    let target = verus::difficulty_to_target(difficulty);
-    println!("Target (BE): {:x?}", target);
+    let target_be = verus::difficulty_to_target(difficulty);
+    println!("Target (BE): {:x?}", target_be);
+
+    // Also print target in Little-Endian for easier comparison with hash output
+    let mut target_le = [0u8; 32];
+    for i in 0..32 {
+        target_le[i] = target_be[31 - i];
+    }
+    println!("Target (LE): {:x?}", target_le);
+
+    // Print components being hashed
+    println!("Hashing Data Components:");
+    println!("  Challenge: {:x?}", challenge);
+    println!("  Signer:    {}", signer);
+    // Nonce will be printed in the loop
 
     let mut nonce_val = 0u64;
     let start_time = Instant::now(); // For calculating hash rate
@@ -103,10 +116,20 @@ fn find_nonce(challenge: &[u8; 32], signer: &Pubkey, difficulty: u64) -> [u8; 8]
         hash_data.extend_from_slice(signer.as_ref());
         hash_data.extend_from_slice(&nonce_bytes);
 
-        // Verify using the actual VerusHash logic via the verus crate
-        if verus::verify_hash(&hash_data, &target) {
+        // Compute the hash (Little-Endian)
+        let hash_le = verus::verus_hash(&hash_data);
+
+        // Verify hash against the Big-Endian target
+        // Note: verify_hash internally computes the hash again, but we need hash_le for debugging.
+        // In a performance-critical scenario, we might refactor verify_hash to accept a precomputed LE hash.
+        if verus::verify_hash(&hash_data, &target_be) {
             let elapsed = start_time.elapsed();
             let rate = nonce_val as f64 / elapsed.as_secs_f64();
+            println!(
+                "Found valid hash (LE): {:x?} <= Target (LE): {:x?}",
+                &hash_le[..8], // Show first 8 bytes for brevity
+                &target_le[..8]
+            );
             println!("Checked {} nonces. Rate: {:.2} H/s", nonce_val + 1, rate);
             return nonce_bytes;
         }
@@ -114,11 +137,20 @@ fn find_nonce(challenge: &[u8; 32], signer: &Pubkey, difficulty: u64) -> [u8; 8]
         nonce_val += 1;
 
         // Print progress occasionally without slowing down too much
-        if nonce_val % 1_000_000 == 0 {
+        // Also print current hash vs target LE comparison
+        if nonce_val % 500_000 == 0 {
+            // Check more frequently
             let elapsed = start_time.elapsed();
             if elapsed.as_secs() > 0 {
                 let rate = nonce_val as f64 / elapsed.as_secs_f64();
-                println!("...checked {} nonces. Rate: {:.2} H/s", nonce_val, rate);
+                // Show first 8 bytes of LE hash vs LE target
+                println!(
+                    "...checked {} nonces. Rate: {:.2} H/s. Hash (LE): {:x?} vs Target (LE): {:x?}",
+                    nonce_val,
+                    rate,
+                    &hash_le[..8],   // Show first 8 bytes
+                    &target_le[..8]  // Show first 8 bytes
+                );
             }
         }
         // Add a safety break for testing/debugging if needed,
