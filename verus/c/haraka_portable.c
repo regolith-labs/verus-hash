@@ -6,6 +6,17 @@
 #include "haraka_portable.h"
 #include "common.h"               /* upstream typedefs (u128, …)      */
 
+/*------------------------------------------------------------------*
+ *  Solana-BPF loader: section names must not exceed 16 bytes.       *
+ *  Tell Clang to put every static variable after this point         *
+ *  straight into plain sections instead of ".<sec>.<mangled-name>". *
+ *------------------------------------------------------------------*/
+#if defined(__clang__)
+#pragma clang section bss    = ".bss"    /* Uninitialised globals */
+#pragma clang section data   = ".data"   /* Initialised globals */
+#pragma clang section rodata = ".rodata" /* Read-only globals (const) */
+#endif
+
 /*──────────────── tiny memcpy / memset (exported) ────────────────*/
 void *verus_memcpy(void *d, const void *s, size_t n)
 {

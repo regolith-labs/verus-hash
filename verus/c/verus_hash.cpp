@@ -4,6 +4,17 @@
 #include "uint256.h"
 #include "common.h" // Includes stddef.h for size_t
 
+/*------------------------------------------------------------------*
+ *  Solana-BPF loader: section names must not exceed 16 bytes.       *
+ *  Tell Clang to put every static variable after this point         *
+ *  straight into plain sections instead of ".<sec>.<mangled-name>". *
+ *------------------------------------------------------------------*/
+#if defined(__clang__)
+#pragma clang section bss    = ".bss"    /* Uninitialised globals */
+#pragma clang section data   = ".data"   /* Initialised globals */
+#pragma clang section rodata = ".rodata" /* Read-only globals (const) */
+#endif
+
 /* ---- simple portable implementation: VerusHash 2.0 ---- */
 
 void verus_hash_v2(unsigned char *out, const unsigned char *in, unsigned int len)

@@ -12,7 +12,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-declare_id!("mineRHF5r6S7HyD9SppBfVMXMavDkJsxwGesEvxZr2A");
+declare_id!("DCCoS9rqVhJyq17XAizxntC4Hw9rHaXjZRsC53kHHMgp");
 
 #[cfg(not(feature = "no-entrypoint"))]
 solana_program::entrypoint!(process_instruction);

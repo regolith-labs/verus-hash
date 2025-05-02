@@ -1,9 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["verus", "program"]
-
-# Remove the original verus crate definition if it exists here
-# (It shouldn't based on the provided file, but double-checking)
+# Add the new 'client' crate to the workspace members
+members = ["verus", "program", "client"]
 
 [workspace.package]
 version = "0.0.1"
@@ -26,6 +24,12 @@ solana-program-test = "2.1"
 solana-sdk = "2.1"
 strum = { version = "0.26.2", features = ["derive"] }
 tokio = { version = "1.37.0", features = ["full"] }
+# Add client-specific dependencies to workspace.dependencies if they might be shared
+# Or keep them directly in client/Cargo.toml if they are unique to the client
+anyhow = "1.0"
+dirs = "5.0"
+solana-client = "2.1"
+# solana-sdk is already in workspace.dependencies
 
 [profile.release]
 lto = "fat"
