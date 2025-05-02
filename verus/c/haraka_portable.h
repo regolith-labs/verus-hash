@@ -21,6 +21,9 @@ void *verus_memset(void *dst, int c,          size_t n);
 /* Public permutations with feed-forward (used by verus_hash.cpp) */
 /* Note: These now build constants internally on the stack */
 void haraka256_port(uint8_t *out, const uint8_t *in);
+
+/* --- Helper for build-time constant generation (host only) --- */
+/* get_vrsc_constants is removed; generation now happens in build.rs */
 void haraka512_port(uint8_t *out, const uint8_t *in);
 
 #ifdef __cplusplus

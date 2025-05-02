@@ -49,10 +49,11 @@ fi
 # Use paths relative to the script's location (CRATE_DIR)
 # CRYPTO_SRC now points to verus/c/
 SRC_FILES=(
-  "$CRYPTO_SRC/haraka_portable.c" # Reference portable file (includes constants)
+  "$CRYPTO_SRC/haraka_portable.c" # Portable file (now includes generated constants)
   "$CRYPTO_SRC/verus_hash.cpp"
   "$CRYPTO_SRC/uint256.cpp"
   # common.cpp might be added later if stubbed
+  # haraka_constants.c is no longer needed as source, constants are included
 )
 
 # Filter out non-existent files to prevent build errors
@@ -74,10 +75,11 @@ fi
 # 2. Common include path(s)
 # ------------------------------------------------------------------------------
 # Use paths relative to the script's location (CRATE_DIR)
+# OUT_DIR is passed as env var from build.rs and contains haraka_rc_vrsc.inc
 INC="-I $CRYPTO_SRC \
-
      -I $LIBRUSTZCASH_H_PATH \
-     -I $STUB_DIR" # Include stub dir for generated headers/sources
+     -I $STUB_DIR \
+     -I $OUT_DIR" # Include OUT_DIR for generated headers/sources
 
 # ------------------------------------------------------------------------------
 # 3. Toolchain & flags for Solana BPF

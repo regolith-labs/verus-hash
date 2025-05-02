@@ -57,6 +57,9 @@ mod backend {
 // Re-export the verus_hash function from the appropriate backend module.
 pub use backend::verus_hash;
 
+// --- FFI Helper for Constant Generation (Host Only) ---
+// Removed: Constants are now generated during the build process by build.rs
+
 /// Return `true` if `verus_hash(data)` ≤ `target_be` (both big-endian).
 /// *Avoids BigUint and extra Vec allocations for Solana BPF compatibility.*
 /// This function now unconditionally uses the `verus_hash` function exported above,
@@ -183,4 +186,7 @@ mod tests {
             std::println!("Skipping verify_known_vector_fail as hash is zero.");
         }
     }
+
+    // Removed generate_constants_file test.
+    // Constants are now generated automatically by the build.rs script.
 }

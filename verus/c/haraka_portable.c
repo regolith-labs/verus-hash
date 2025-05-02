@@ -105,90 +105,32 @@ static void unpackhi32(uint8_t *t, uint8_t *a, uint8_t *b)
 }
 
 /*──────────────── round constants ───────────────────────────────*/
-// Include the definitions of default_haraka_rc (const)
-#include "haraka_constants.c"
-// Writable constants (rc) are now generated on the stack per-call.
+// Include the generated constants file.
+// The build system (build.rs -> build.sh) ensures this file exists in OUT_DIR
+// and adds OUT_DIR to the include paths.
+#include "haraka_rc_vrsc.inc"
 
-/*──────────────── Internal Helper: Build Round Constants ────────*/
-/* Build personalised round constants into `dst` (40×16 bytes) */
-/* Uses the hardcoded "VRSC" seed, matching original init logic */
-static void make_rc(uint8_t dst[40][16])
-{
-    // Use a temporary buffer on the stack for haraka_S output.
-    // Size matches the destination `dst`.
-    uint8_t buf[40*16]; // 640 bytes, stack-ok
-
-    // Initialize dst with the default constants
-    memcpy(dst, default_haraka_rc, 40*16);
-
-    // Apply primary key (pk) tweak ("VRSC")
-    // haraka_S writes its output into the temporary `buf`.
-    haraka_S(buf, 40*16, (const uint8_t*)"VRSC", 4);
-
-    // Copy the tweaked constants from `buf` into the final destination `dst`.
-    memcpy(dst, buf, 40*16);
-    // `dst` now holds the final constants needed by the permutations for this call.
-}
-
+// Define the static constant array using the included initializer.
+// The name `haraka_rc_vrsc` matches the variable name expected by the include.
+// If the include file provides ` { { ... }, { ... } ... }; `, this defines the array.
+static const uint8_t rc[40][16] =
+#include "haraka_rc_vrsc.inc"
+// Note: Some compilers might warn about the re-include, but it's a common pattern.
+// Alternatively, the .inc file could just contain the `{...}, ...` part without the outer braces and semicolon.
+// Let's assume the generator produces the full ` { {..}, ... }; ` structure.
+// If it only produces the inner content, the line above should be:
+// static const uint8_t rc[40][16] = {
+// #include "haraka_rc_vrsc.inc"
+// };
+// The current generator produces the full structure including the outer braces and semicolon.
 
 /*──────────────── Internal Sponge Utilities (Haraka-S) ──────────*/
-#define RATE 32
-// Forward declaration for the permutation used by the sponge
-static void haraka512_perm_internal(uint8_t *o, const uint8_t *i, const uint8_t rc[40][16]);
-
-// Make sponge helpers static as they are no longer part of the public API
-static void sponge_absorb(uint8_t *s, const uint8_t *m,
-                          uint64_t mlen, uint8_t pad)
-{
-    // Sponge needs temporary round constants just for its internal permutation calls.
-    // Generate them here. This is separate from the constants used by the main hash.
-    uint8_t sponge_rc[40][16];
-    make_rc(sponge_rc); // Use standard "VRSC" seed for sponge internal permutation
-
-    while (mlen >= RATE){
-        for (unsigned i=0;i<RATE;++i) s[i] ^= m[i];
-        // Call the internal permutation function with the generated constants
-        haraka512_perm_internal(s, s, sponge_rc);
-        m   += RATE;
-        mlen-= RATE;
-    }
-    uint8_t tmp[RATE];
-    memset(tmp,0,sizeof tmp);
-    memcpy(tmp,m,mlen);
-    tmp[mlen] = pad;
-    tmp[RATE-1] |= 0x80;
-    for (unsigned i=0;i<RATE;++i) s[i] ^= tmp[i];
-}
-// Make sponge helpers static
-static void sponge_squeeze(uint8_t *out, uint64_t blocks, uint8_t *s)
-{
-    // Sponge needs temporary round constants just for its internal permutation calls.
-    uint8_t sponge_rc[40][16];
-    make_rc(sponge_rc); // Use standard "VRSC" seed
-
-    while (blocks--){
-        // Call the internal permutation function with the generated constants
-        haraka512_perm_internal(s, s, sponge_rc);
-        memcpy(out,s,RATE);
-        out += RATE;
-    }
-}
-void haraka_S(uint8_t *out,uint64_t outlen,const uint8_t *in,uint64_t inlen)
-{
-    uint8_t st[64]={0}, tmp[32];
-    sponge_absorb(st,in,inlen,0x1F);
-    sponge_squeeze(out,outlen/32,st);
-    out += (outlen/32)*32;
-    if (outlen & 31){
-        sponge_squeeze(tmp,1,st);
-        memcpy(out,tmp,outlen&31);
-    }
-}
+// Sponge logic is no longer needed here as constants are pre-generated.
+// Removed sponge_absorb, sponge_squeeze, haraka_S, make_rc
 
 /*──────────────── Internal Haraka-512 permutation ───────────────*/
-// Takes round constants `rc` as a parameter.
-// Renamed to avoid conflict with the old static declaration if any existed.
-static void haraka512_perm_internal(uint8_t *out, const uint8_t *in, const uint8_t rc[40][16])
+// Now uses the static `rc` array directly.
+static void haraka512_perm_internal(uint8_t *out, const uint8_t *in)
 {
     // Allocate scratch buffers on the stack
     uint8_t scr512[64]; // Used as 's' below
@@ -200,8 +142,7 @@ static void haraka512_perm_internal(uint8_t *out, const uint8_t *in, const uint8
 
     for (unsigned r=0;r<5;++r){
         for (unsigned j=0;j<2;++j){
-            // Use the passed-in round constants `rc`
-            // Note: Access rc directly as rc[index] which points to the start of the 16-byte block.
+            // Use the static precomputed round constants `rc`
             aesenc(s     , rc[4*r*2+4*j  ]);
             aesenc(s+16  , rc[4*r*2+4*j+1]);
             aesenc(s+32  , rc[4*r*2+4*j+2]);
@@ -219,14 +160,10 @@ static void haraka512_perm_internal(uint8_t *out, const uint8_t *in, const uint8
 /* feed-forward + truncation (VerusHash needs this) */
 void haraka512_port(uint8_t *out, const uint8_t *in)
 {
-    // Allocate round constants on the stack for this call
-    uint8_t rc[40][16]; // 640 bytes, stack-ok
-    make_rc(rc);        // Build constants using "VRSC" seed
-
     // Allocate local buffer on the stack
     uint8_t buf[64];
-    // Call the internal permutation with the stack-allocated constants
-    haraka512_perm_internal(buf, in, rc);
+    // Call the internal permutation which now uses the static constants
+    haraka512_perm_internal(buf, in);
 
     /* XOR the original message (feed-forward) */
     for (unsigned i = 0; i < 64; ++i)
@@ -236,13 +173,13 @@ void haraka512_port(uint8_t *out, const uint8_t *in)
        take lanes starting at 8, 24, 40, 56 (spec-compliant) */
     memcpy(out     , buf +  8, 8);
     memcpy(out +  8, buf + 24, 8);
-    memcpy(out + 16, buf + 40, 8);   /* Corrected offset */
-    memcpy(out + 24, buf + 56, 8);   /* Corrected offset */
+    memcpy(out + 16, buf + 40, 8);
+    memcpy(out + 24, buf + 56, 8);
 }
 
 /*──────────────── Internal Haraka-256 permutation ───────────────*/
-// Takes round constants `rc` as a parameter.
-static void haraka256_perm_internal(uint8_t *out, const uint8_t *in, const uint8_t rc[40][16])
+// Now uses the static `rc` array directly.
+static void haraka256_perm_internal(uint8_t *out, const uint8_t *in)
 {
     // Allocate scratch buffers on the stack
     uint8_t scr256[32]; // Used as 's' below
@@ -254,8 +191,8 @@ static void haraka256_perm_internal(uint8_t *out, const uint8_t *in, const uint8
 
     for (unsigned r=0;r<5;++r){
         for (unsigned j=0;j<2;++j){
-            // Use the passed-in round constants `rc`
-            // Note: Access rc directly as rc[index]. Indices 0..19 are used.
+            // Use the static precomputed round constants `rc`
+            // Note: Indices 0..19 are used.
             aesenc(s    , rc[2*r*2+2*j  ]);
             aesenc(s+16 , rc[2*r*2+2*j+1]);
         }
@@ -270,11 +207,12 @@ static void haraka256_perm_internal(uint8_t *out, const uint8_t *in, const uint8
 /*──────────────── Public Haraka-256 Entry Point ─────────────────*/
 void haraka256_port(uint8_t *out, const uint8_t *in)
 {
-    // Allocate round constants on the stack for this call
-    uint8_t rc[40][16]; // 640 bytes, stack-ok (needs full 40 for make_rc)
-    make_rc(rc);        // Build constants using "VRSC" seed
-
-    // Call the internal permutation with the stack-allocated constants
-    haraka256_perm_internal(out, in, rc);
+    // Call the internal permutation which now uses the static constants
+    haraka256_perm_internal(out, in);
 }
+
+/*──────────────── Helper for build-time generation ────────────*/
+// Removed get_vrsc_constants function as it's no longer needed.
+// Generation happens via generate_constants.c run by build.rs.
+
 /*───────────────────────────────────────────────────────────────*/
