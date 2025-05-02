@@ -111,14 +111,23 @@ static void unpackhi32(uint8_t *t, uint8_t *a, uint8_t *b)
 // We declare it `extern const` first and then define it without `static`
 // to ensure it has external linkage and isn't optimized away by the C++
 // compiler during host builds when only C functions reference it.
+// Define the constant array using the included initializer.
+// The build system (build.rs) generates `haraka_rc_vrsc.inc` and copies it
+// to `verus/c/` so the `#include` below finds it.
+// We declare it `extern const` first and then define it without `static`
+// to ensure it has external linkage and isn't optimized away by the C++
+// compiler during host builds when only C functions reference it.
 extern const uint8_t rc[40][16]; // Declaration with external linkage
 const uint8_t rc[40][16] =         // Definition
 #include "haraka_rc_vrsc.inc"
 ;
 
+// NOTE: The static writable rc buffer, rc_init, rc_host, rc_bpf functions
+// that were previously here have been removed.
+// The const `rc` array defined above is now used directly by the permutations below.
+
 /*──────────────── Internal Sponge Utilities (Haraka-S) ──────────*/
 // Sponge logic is no longer needed here as constants are pre-generated.
-// Removed sponge_absorb, sponge_squeeze, haraka_S, make_rc
 
 /*──────────────── Internal Haraka-512 permutation ───────────────*/
 // Now uses the static `rc` array directly.

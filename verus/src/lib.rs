@@ -21,6 +21,10 @@ mod backend {
         // or similar, resulting in a 32-byte hash.
         fn verus_hash_v2(out_ptr: *mut u8, in_ptr: *const u8, len: usize);
 
+        // Expose the static round constant array from the C code.
+        // Its actual name in haraka_portable.c is `rc`.
+        static rc: [u8; 40 * 16]; // 640 bytes total
+
         // Initialization function (`verus_hash_v2_init`) is no longer needed.
         // Constants are baked into the static library at compile time via
         // the included `haraka_rc_vrsc.inc` file for both host and SBF builds.
@@ -37,6 +41,14 @@ mod backend {
         unsafe { verus_hash_v2(out.as_mut_ptr(), data.as_ptr(), data.len()) };
         out
     }
+
+    /// Borrows the static Haraka round constant table (read-only).
+    /// The symbol name in C is `rc`.
+    pub fn haraka_rc() -> &'static [u8; 640] {
+        // Safety: Accessing a static C variable. Assumes the C library
+        // correctly defines and links `rc` as a constant array of the expected size.
+        unsafe { &rc }
+    }
 }
 
 // This module provides a compile-time error if the crate is built for the host
@@ -52,8 +64,9 @@ mod backend {
     }
 }
 
-// Re-export the verus_hash function from the appropriate backend module.
-pub use backend::verus_hash;
+// Re-export the verus_hash function and the constants accessor from the backend module.
+pub use backend::haraka_rc;
+pub use backend::verus_hash; // Export the new function
 
 // --- FFI Helper for Constant Generation (Host Only) ---
 // Removed: Constants are now generated during the build process by build.rs

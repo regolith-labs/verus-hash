@@ -66,50 +66,65 @@ pub fn process_instruction(
             sol_log_compute_units(); // Log CUs at start
             let mut p = &ix_data[1..]; // Start after the opcode byte
 
-            // Check minimum length for msg_len
-            if p.len() < 4 {
-                return Err(ProgramError::InvalidInstructionData); // Need at least 4 bytes for length
+            // Expected data layout: msg_len(4 LE = 64) | msg(64) | target(32)
+            // Total expected length after opcode: 4 + 64 + 32 = 100 bytes
+            if p.len() != 100 {
+                solana_program::msg!(
+                    "Error: Invalid instruction data length. Expected 100 bytes after opcode, got {}",
+                    p.len()
+                );
+                return Err(ProgramError::InvalidInstructionData);
             }
+
             // Safely parse msg_len from the first 4 bytes
             let msg_len_bytes: [u8; 4] = p[..4]
                 .try_into()
                 .map_err(|_| ProgramError::InvalidInstructionData)?;
             let msg_len = u32::from_le_bytes(msg_len_bytes) as usize;
 
-            // Advance the slice past the length field
-            p = &p[4..];
-
-            // Check minimum length for msg + target
-            if p.len() < msg_len + 32 {
-                return Err(ProgramError::InvalidInstructionData); // Not enough data for msg and target
+            // Validate msg_len is exactly 64
+            if msg_len != 64 {
+                solana_program::msg!(
+                    "Error: Invalid message length in instruction data. Expected 64, got {}",
+                    msg_len
+                );
+                return Err(ProgramError::InvalidInstructionData);
             }
 
-            // Slice the message and target
-            let msg = &p[..msg_len];
-            let target = &p[msg_len..msg_len + 32];
+            // Advance the slice past the length field
+            p = &p[4..]; // p now points to the start of the 64-byte message
+
+            // Slice the message (64 bytes) and target (32 bytes)
+            // No need to check length again, already validated p.len() == 100 above
+            let msg = &p[..64]; // The 64-byte message: challenge(32) + signer[0..24](24) + nonce(8)
+            let target = &p[64..96]; // The 32-byte target
 
             // Safely convert target slice to fixed-size array
             let target_be: &[u8; 32] = target
                 .try_into()
                 .map_err(|_| ProgramError::InvalidInstructionData)?; // Should match size 32
 
+            // --- Log the round constants used by the program ---
+            let rc = verus::haraka_rc();
+            solana_program::msg!("RC[0..16] on-chain = {:02x?}", &rc[..16]);
+            // --- End RC logging ---
+
             // --- Log the hash calculated by the program ---
-            let hash_le = verus::verus_hash(msg); // Calculate hash (LE)
+            // The `msg` slice is now the correct 64-byte buffer to hash
+            let hash_le = verus::verus_hash(msg); // Calculate hash (LE) of the 64-byte message
             let mut hash_be = [0u8; 32];
             for i in 0..32 {
                 hash_be[i] = hash_le[31 - i]; // Convert to BE
             }
+            solana_program::msg!("Program received msg (64 bytes): {:x?}", msg); // Log the message being hashed
             solana_program::msg!("Program calculated hash (LE): {:x?}", hash_le);
             solana_program::msg!("Program calculated hash (BE): {:x?}", hash_be);
             solana_program::msg!("Target (BE): {:x?}", target_be);
             // --- End logging ---
 
-            // Perform the verification using the verus crate (using the already calculated hash_be)
-            // Note: verus::verify_hash recalculates the hash internally.
-            // We could optimize later, but for debugging, let's keep it simple.
+            // Perform the verification using the verus crate.
+            // It will hash the provided 64-byte `msg` and compare against `target_be`.
             if verus::verify_hash(msg, target_be) {
-                // Alternative check using our logged hash_be:
-                // if hash_be <= *target_be {
                 solana_program::msg!("Hash verification successful (program).");
                 sol_log_compute_units(); // Log CUs on success
                 Ok(())

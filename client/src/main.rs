@@ -20,6 +20,7 @@ const RPC_URL: &str = "http://localhost:8899";
 fn main() -> anyhow::Result<()> {
     // 1) connection + payer
     let client = RpcClient::new_with_commitment(RPC_URL.to_string(), CommitmentConfig::confirmed());
+    println!("RC[0..16] in client  = {:02x?}", &verus::haraka_rc()[..16]); // Print constants used by client
     let payer_path = dirs::home_dir().unwrap().join(".config/solana/id.json");
     let payer =
         read_keypair_file(&payer_path).map_err(|_err| anyhow::anyhow!("failed to read keypair"))?;
@@ -50,18 +51,18 @@ fn main() -> anyhow::Result<()> {
         target_be
     );
 
-    // Construct the message (challenge + signer + nonce) - this is what the program needs to hash
-    let mut msg_data = Vec::with_capacity(32 + 32 + 8);
-    msg_data.extend_from_slice(&challenge);
-    msg_data.extend_from_slice(payer.pubkey().as_ref());
-    msg_data.extend_from_slice(&nonce_bytes);
-    let msg_len: u32 = msg_data.len() as u32; // Should be 72
+    // Construct the 64-byte message: challenge (32) + signer[0..24] (24) + nonce (8)
+    let mut msg_data = [0u8; 64];
+    msg_data[..32].copy_from_slice(&challenge); // Pass as slice reference
+    msg_data[32..56].copy_from_slice(&payer.pubkey().to_bytes()[..24]); // First 24 bytes of signer
+    msg_data[56..64].copy_from_slice(&nonce_bytes); // 8 bytes nonce
+    let msg_len: u32 = msg_data.len() as u32; // Should be 64
 
-    // Construct the full instruction data according to the program's expected format
-    let mut instruction_data = Vec::with_capacity(1 + 4 + msg_data.len() + 32); // 1 + 4 + 72 + 32 = 109 bytes
+    // Construct the full instruction data: opcode(1) | msg_len(4 LE = 64) | msg(64) | target(32)
+    let mut instruction_data = Vec::with_capacity(1 + 4 + 64 + 32); // 1 + 4 + 64 + 32 = 101 bytes
     instruction_data.push(1u8); // Opcode 1
-    instruction_data.extend_from_slice(&msg_len.to_le_bytes()); // Message length (4 bytes LE)
-    instruction_data.extend_from_slice(&msg_data); // The actual message (72 bytes)
+    instruction_data.extend_from_slice(&msg_len.to_le_bytes()); // Message length (4 bytes LE = 64)
+    instruction_data.extend_from_slice(&msg_data); // The actual message (64 bytes)
     instruction_data.extend_from_slice(&target_be); // Target (Big-Endian, 32 bytes)
 
     // 5) Build instruction for Opcode 1 (no accounts needed)
@@ -115,14 +116,13 @@ fn find_nonce(challenge: &[u8; 32], signer: &Pubkey, difficulty: u64) -> [u8; 8]
     loop {
         let nonce_bytes = nonce_val.to_le_bytes();
 
-        // Construct hash data: challenge + signer + nonce
-        // This is the message ('msg') that the program's Opcode 1 expects.
-        let mut hash_data = Vec::with_capacity(32 + 32 + 8);
-        hash_data.extend_from_slice(challenge);
-        hash_data.extend_from_slice(signer.as_ref());
-        hash_data.extend_from_slice(&nonce_bytes);
+        // Construct the 64-byte hash data: challenge (32) + signer[0..24] (24) + nonce (8)
+        let mut hash_data = [0u8; 64];
+        hash_data[..32].copy_from_slice(challenge); // Pass challenge directly (it's already a reference)
+        hash_data[32..56].copy_from_slice(&signer.to_bytes()[..24]); // Use signer directly
+        hash_data[56..64].copy_from_slice(&nonce_bytes); // 8 bytes nonce
 
-        // Compute the hash (Little-Endian)
+        // Compute the hash (Little-Endian) using the 64-byte buffer
         let hash_le = verus::verus_hash(&hash_data);
 
         // Convert hash to Big-Endian for comparison

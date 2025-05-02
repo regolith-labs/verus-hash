@@ -72,6 +72,18 @@ if [[ "$COMMON_CPP" == "$STUB_DIR/common.cpp" ]]; then
 fi
 
 # ------------------------------------------------------------------------------
+# Conditionally remove haraka_constants.c for SBF builds
+# ------------------------------------------------------------------------------
+# We embed the VRSC constants directly into haraka_portable.c via the included
+# haraka_rc_vrsc.inc file. Compiling haraka_constants.c for SBF would lead
+# to linking the wrong (default AES) constants.
+if [[ "$TARGET" == *"bpf"* || "$TARGET" == *"sbf"* ]]; then
+  echo "build.sh: Removing haraka_constants.c from SBF build sources."
+  # Use bash parameter expansion to remove the element
+  EXISTING_SRC_FILES=("${EXISTING_SRC_FILES[@]/$CRYPTO_SRC\/haraka_constants.c/}")
+fi
+
+# ------------------------------------------------------------------------------
 # 2. Common include path(s)
 # ------------------------------------------------------------------------------
 # Use paths relative to the script's location (CRATE_DIR)
