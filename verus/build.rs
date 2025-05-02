@@ -138,12 +138,24 @@ fn main() {
     file.write_all(&output.stdout)
         .expect("Failed to write constants include file");
 
+    // Also copy the generated constants file into the C source directory (`verus/c/`)
+    // so that `#include "haraka_rc_vrsc.inc"` in `haraka_portable.c` can find it
+    // reliably during both host and SBF builds, without relying on OUT_DIR include paths.
+    let constants_dest_path = crate_dir.join("c").join("haraka_rc_vrsc.inc");
+    println!(
+        "cargo:info=Copying generated constants from {} to {}",
+        constants_inc_path.display(),
+        constants_dest_path.display()
+    );
+    fs::copy(&constants_inc_path, &constants_dest_path)
+        .expect("Failed to copy constants include file to c/");
+
     // Tell cargo to rerun if the generator source changes
     println!("cargo:rerun-if-changed={}", generator_src_path.display());
     // Note: build.rs changes automatically trigger rerun.
 
     // -----------------------------------------------------------------------
-    // 2. Run the shell script so libverushash.a exists (for SBF or host+portable)
+    // Run the shell script so libverushash.a exists (for SBF or host+portable)
     //    This script will now use the generated constants file.
     // -----------------------------------------------------------------------
     let script = crate_dir.join("build.sh");

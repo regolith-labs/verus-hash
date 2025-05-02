@@ -78,8 +78,9 @@ fi
 # OUT_DIR is passed as env var from build.rs and contains haraka_rc_vrsc.inc
 INC="-I $CRYPTO_SRC \
      -I $LIBRUSTZCASH_H_PATH \
-     -I $STUB_DIR \
-     -I $OUT_DIR" # Include OUT_DIR for generated headers/sources
+     -I $STUB_DIR"
+# OUT_DIR is no longer needed in include path for constants,
+# as haraka_rc_vrsc.inc is copied to verus/c/ by build.rs
 
 # ------------------------------------------------------------------------------
 # 3. Toolchain & flags for Solana BPF

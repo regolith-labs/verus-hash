@@ -21,32 +21,19 @@ mod backend {
         // or similar, resulting in a 32-byte hash.
         fn verus_hash_v2(out_ptr: *mut u8, in_ptr: *const u8, len: usize);
 
-        // Initialization function, called once on host builds.
-        // This is a NOP or non-existent on SBF builds.
-        fn verus_hash_v2_init();
+        // Initialization function (`verus_hash_v2_init`) is no longer needed.
+        // Constants are baked into the static library at compile time via
+        // the included `haraka_rc_vrsc.inc` file for both host and SBF builds.
     }
 
-    // Use std::sync::Once for host builds to initialize constants exactly once.
-    // This requires the `std` feature, which is disabled for SBF (`no_std`).
-    #[cfg(not(target_arch = "bpf"))]
-    use std::sync::Once;
-    #[cfg(not(target_arch = "bpf"))]
-    static START: Once = Once::new();
+    // No runtime initialization needed anymore.
 
     /// Compute the little-endian VerusHash 2.0 of `data` using the C backend.
     pub fn verus_hash(data: &[u8]) -> [u8; 32] {
-        // Initialize constants once on host builds.
-        // This block is compiled out for SBF targets.
-        #[cfg(not(target_arch = "bpf"))]
-        START.call_once(|| {
-            // Safety: Calling the C init function. Assumed safe to call once.
-            unsafe { verus_hash_v2_init() };
-        });
-
+        // Constants are baked in, no runtime initialization required.
         let mut out = [0u8; 32];
         // Call the FFI function. It's unsafe because it involves FFI.
-        // Safety relies on the C implementation being correct and thread-safe (if used concurrently),
-        // and that init_internal() has been called.
+        // Safety relies on the C implementation being correct.
         unsafe { verus_hash_v2(out.as_mut_ptr(), data.as_ptr(), data.len()) };
         out
     }
