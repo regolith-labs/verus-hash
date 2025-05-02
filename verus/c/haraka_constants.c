@@ -7,11 +7,11 @@
  *  Tell Clang to put every static variable after this point         *
  *  straight into plain sections instead of ".<sec>.<mangled-name>". *
  *------------------------------------------------------------------*/
-#if defined(__clang__)
-#pragma clang section bss    = ".bss"    /* Uninitialised globals */
-#pragma clang section data   = ".data"   /* Initialised globals */
-#pragma clang section rodata = ".rodata" /* Read-only globals (const) */
-#endif
+#if defined(__clang__) && defined(__ELF__)
+#  pragma clang section bss    = ".bss"    /* Uninitialised globals */
+#  pragma clang section data   = ".data"   /* Initialised globals */
+#  pragma clang section rodata = ".rodata" /* Read-only globals (const) */
+#endif /* __clang__ && __ELF__ */
 
 const unsigned char haraka_rc[40 * 16] = {
   0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f,

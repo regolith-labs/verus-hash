@@ -1,10 +1,10 @@
 use solana_client::rpc_client::RpcClient;
+use solana_sdk::commitment_config::CommitmentConfig; // Added import
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
-    signature::{read_keypair_file, Keypair, Signer},
-    system_instruction,
-    transaction::Transaction,
+    signature::{read_keypair_file, Signer}, // Removed Keypair
+    transaction::Transaction,               // Removed system_instruction
 };
 use std::str::FromStr;
 
@@ -16,7 +16,7 @@ fn main() -> anyhow::Result<()> {
     // 1) connection + payer
     let client = RpcClient::new_with_commitment(
         RPC_URL.to_string(),
-        solana_client::rpc_config::CommitmentConfig::confirmed(),
+        CommitmentConfig::confirmed(), // Use imported CommitmentConfig
     );
     let payer = read_keypair_file(
         dirs::home_dir()

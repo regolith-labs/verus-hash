@@ -11,11 +11,11 @@
  *  Tell Clang to put every static variable after this point         *
  *  straight into plain sections instead of ".<sec>.<mangled-name>". *
  *------------------------------------------------------------------*/
-#if defined(__clang__)
-#pragma clang section bss    = ".bss"    /* Uninitialised globals */
-#pragma clang section data   = ".data"   /* Initialised globals */
-#pragma clang section rodata = ".rodata" /* Read-only globals (const) */
-#endif
+#if defined(__clang__) && defined(__ELF__)
+// #pragma clang section bss    = ".bss"    /* Removed: No static writable data allowed */
+#  pragma clang section data   = ".data"   /* Initialised globals */
+#  pragma clang section rodata = ".rodata" /* Read-only globals (const) */
+#endif /* __clang__ && __ELF__ */
 
 /*──────────────── tiny memcpy / memset (exported) ────────────────*/
 void *verus_memcpy(void *d, const void *s, size_t n)
@@ -166,10 +166,13 @@ void haraka_S(uint8_t *out,uint64_t outlen,const uint8_t *in,uint64_t inlen)
 }
 
 /*──────────────── Haraka-512 permutation ────────────────────────*/
-static uint8_t scr512[64], scr256[32], scr16[16];
+// Scratch buffers moved to stack to avoid static writable data (.bss)
 
 static void haraka512_perm(uint8_t *out,const uint8_t *in)
 {
+    // Allocate scratch buffers on the stack
+    uint8_t scr512[64]; // Used as 's' below
+    uint8_t scr16 [16]; // Used as 't' below
     uint8_t *s=scr512,*t=scr16;
 
     memcpy(s   ,in    ,16);  memcpy(s+16,in+16,16);
@@ -193,7 +196,8 @@ static void haraka512_perm(uint8_t *out,const uint8_t *in)
 /* feed-forward + truncation (VerusHash needs this) */
 void haraka512_port(uint8_t *out,const uint8_t *in)
 {
-    uint8_t *buf=scr512;
+    // Allocate local buffer on the stack
+    uint8_t buf[64];
     haraka512_perm(buf,in);
     /* XOR the original message (feed-forward) */
     for (unsigned i = 0; i < 64; ++i)
@@ -210,6 +214,9 @@ void haraka512_port(uint8_t *out,const uint8_t *in)
 /*──────────────── Haraka-256 (same style) ───────────────────────*/
 static void haraka256_perm(uint8_t *out,const uint8_t *in)
 {
+    // Allocate scratch buffers on the stack
+    uint8_t scr256[32]; // Used as 's' below
+    uint8_t scr16 [16]; // Used as 't' below
     uint8_t *s=scr256,*t=scr16;
 
     memcpy(s   ,in   ,16);

@@ -9,11 +9,11 @@
  *  Tell Clang to put every static variable after this point         *
  *  straight into plain sections instead of ".<sec>.<mangled-name>". *
  *------------------------------------------------------------------*/
-#if defined(__clang__)
-#pragma clang section bss    = ".bss"    /* Uninitialised globals */
-#pragma clang section data   = ".data"   /* Initialised globals */
-#pragma clang section rodata = ".rodata" /* Read-only globals (const) */
-#endif
+#if defined(__clang__) && defined(__ELF__)
+#  pragma clang section bss    = ".bss"    /* Uninitialised globals */
+#  pragma clang section data   = ".data"   /* Initialised globals */
+#  pragma clang section rodata = ".rodata" /* Read-only globals (const) */
+#endif /* __clang__ && __ELF__ */
 
 /* ---- simple portable implementation: VerusHash 2.0 ---- */
 

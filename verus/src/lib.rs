@@ -31,10 +31,6 @@ mod backend {
     #[cfg(not(target_arch = "bpf"))]
     static INIT: Once = Once::new();
 
-    // BPF needs a simple flag for initialization check.
-    #[cfg(target_arch = "bpf")]
-    static mut INITIALIZED: bool = false;
-
     /// Initializes the VerusHash C library. Safe to call multiple times.
     fn init_internal() {
         #[cfg(not(target_arch = "bpf"))]
@@ -46,16 +42,11 @@ mod backend {
                 unsafe { verus_hash_v2_init() };
             });
         }
+        // BPF: no writable statics allowed. The init call is idempotent and
+        // costs <100 ns, so just run it every time.
         #[cfg(target_arch = "bpf")]
-        {
-            // Safety: Accessing static mut in BPF (single-threaded context).
-            // Check and set flag to ensure init runs only once.
-            unsafe {
-                if !INITIALIZED {
-                    verus_hash_v2_init();
-                    INITIALIZED = true;
-                }
-            }
+        unsafe {
+            verus_hash_v2_init();
         }
     }
 

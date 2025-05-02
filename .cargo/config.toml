@@ -1,3 +1,18 @@
+# Configuration for Cargo builds
+
+# Settings specific to the Solana BPF target
+[target.'cfg(target_arch = "bpf")']
+rustflags = [
+  # Prevent linker from creating .data.* / .bss.* subsections
+  # See: https://github.com/solana-labs/rbpf/issues/408
+  "-C",
+  "link-arg=-Wl,--no-data-sections",
+]
+
+# Note: Solana uses bpfel-unknown-unknown, but cfg(target_arch = "bpf") matches it.
+# If you need flags specific ONLY to bpfel, use:
+# [target.bpfel-unknown-unknown]
+# rustflags = [...]
 # .cargo/config.toml
 
 # Set linker arguments specifically for macOS targets (x86_64)
