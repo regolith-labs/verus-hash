@@ -1,12 +1,15 @@
 #ifndef VERUS_HASH_H
 #define VERUS_HASH_H
+
+#include "common.h" // Include common definitions, including stddef.h for size_t
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 // Hashes input `in` of length `len` into `out` (32 bytes).
-// Round constants are generated internally using the "VRSC" seed.
-void verus_hash_v2(unsigned char *out, const unsigned char *in, unsigned int len);
+// Implements VerusHash v2.2 algorithm.
+void verus_hash_v2(unsigned char *out, const unsigned char *in, size_t len);
 
 // Initialization function is no longer needed as constants are baked in at compile time.
 
