@@ -105,14 +105,16 @@ static void unpackhi32(uint8_t *t, uint8_t *a, uint8_t *b)
 }
 
 /*──────────────── round constants ───────────────────────────────*/
-// Define the static constant array using the included initializer.
-// The build system (build.rs -> build.sh) ensures haraka_rc_vrsc.inc exists in OUT_DIR
-// and adds OUT_DIR to the include paths (-I $OUT_DIR).
-// The name `haraka_rc_vrsc` matches the variable name expected by the include.
-// The include file provides the full initializer structure: `{ {..}, ... };`
-static const uint8_t rc[40][16] =
+// Define the constant array using the included initializer.
+// The build system (build.rs) generates `haraka_rc_vrsc.inc` and copies it
+// to `verus/c/` so the `#include` below finds it.
+// We declare it `extern const` first and then define it without `static`
+// to ensure it has external linkage and isn't optimized away by the C++
+// compiler during host builds when only C functions reference it.
+extern const uint8_t rc[40][16]; // Declaration with external linkage
+const uint8_t rc[40][16] =         // Definition
 #include "haraka_rc_vrsc.inc"
-; // Add semicolon here for clarity, although the include likely provides it.
+;
 
 /*──────────────── Internal Sponge Utilities (Haraka-S) ──────────*/
 // Sponge logic is no longer needed here as constants are pre-generated.
