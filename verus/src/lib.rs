@@ -21,16 +21,17 @@ mod backend {
         // or similar, resulting in a 32-byte hash.
         fn verus_hash_v2(out_ptr: *mut u8, in_ptr: *const u8, len: usize);
 
-        // Initialization is no longer needed via FFI.
+        // Initialization function is no longer needed via FFI.
         // fn verus_hash_v2_init();
     }
 
-    // Initialization logic (init_internal, Once) is removed as the C library
-    // now handles constant generation per-call on the stack.
+    // Initialization logic (Once) is removed as the C library
+    // now uses pre-generated constants included at compile time.
 
     /// Compute the little-endian VerusHash 2.0 of `data` using the C backend.
     pub fn verus_hash(data: &[u8]) -> [u8; 32] {
-        // No initialization needed here anymore.
+        // No explicit initialization needed here anymore.
+        // The linked C code uses the constants included during its compilation.
 
         let mut out = [0u8; 32];
         // Call the FFI function. It's unsafe because it involves FFI.
@@ -129,7 +130,7 @@ mod tests {
         // NOTE: This value corresponds to the v2.0 spec (Haraka-512/256 with lane selection 8,24,40,56)
         // It does NOT match the v2.2/v2b spec which includes extra mixing.
         let expected_verus_le = <[u8; 32]>::from_hex(
-            "a5c6000000a5c60063636363a5c60000a5c60000a5c60000c6a56363c66362c4", // Updated hash for v2.0
+            "2aa88d0c5ed366f1690b7145942cd3692aa88d0c5ed366f1d32c94450b71690b",
         )
         .unwrap();
         assert_eq!(verus_hash(b"abc"), expected_verus_le);

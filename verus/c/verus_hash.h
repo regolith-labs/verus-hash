@@ -9,7 +9,7 @@ extern "C" {
 void verus_hash_v2(unsigned char *out, const unsigned char *in, unsigned int len);
 
 // Initialization function is no longer needed.
-// void verus_hash_v2_init();
+
 
 #ifdef __cplusplus
 }
