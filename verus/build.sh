@@ -126,10 +126,6 @@ echo "build.sh: Using CXX=$CXX" # This should now point to the SDK clang++
 # -fno-data-sections : Prevent splitting globals/statics into per-symbol sections (avoids .bss/.data name length issues)
 BASE_FLAGS="-O3 -fPIC -ffunction-sections -fno-data-sections $INC"
 
-# Append base flags and includes to whatever Cargo provides
-CFLAGS="${CFLAGS:-} $BASE_FLAGS"
-CXXFLAGS="${CXXFLAGS:-} $BASE_FLAGS"
-
 # --- Target-specific flags ---
 # TARGET env var is passed from build.rs
 echo "build.sh: Building for TARGET=$TARGET"
@@ -137,12 +133,21 @@ if [[ "$TARGET" == *"bpf"* || "$TARGET" == *"sbf"* ]]; then
   echo "build.sh: Using SBF/BPF specific flags"
   # SBF/BPF specific flags
   BPF_TARGET_FLAGS="-target bpfel-unknown-unknown -mcpu=generic"
-  CFLAGS="$CFLAGS $BPF_TARGET_FLAGS"
-  # Add C++17 standard, disable stdlib++, exceptions, RTTI for BPF
-  # Rely on __builtin_memcpy etc. which LLVM provides for SBF
-  CFLAGS="$CFLAGS $BPF_TARGET_FLAGS"
-  CXXFLAGS="$CXXFLAGS $BPF_TARGET_FLAGS -std=c++17 -nostdlib++ -fno-exceptions -fno-rtti"
+  # Reset CFLAGS/CXXFLAGS for SBF, ignoring host environment flags
+  CFLAGS="$BASE_FLAGS $BPF_TARGET_FLAGS"
+  CXXFLAGS="$BASE_FLAGS $BPF_TARGET_FLAGS"
+  # Add SBF-specific C++ flags
+  CXXFLAGS="$CXXFLAGS -std=c++17 -nostdlib++ -fno-exceptions -fno-rtti"
+  # Add portable flag
+  CFLAGS="$CFLAGS -DVERUSHASH_PORTABLE=1"
+  CXXFLAGS="$CXXFLAGS -DVERUSHASH_PORTABLE=1"
+  # Disable builtins
+  CFLAGS="$CFLAGS -fno-builtin-memcpy -fno-builtin-memset"
+  CXXFLAGS="$CXXFLAGS -fno-builtin-memcpy -fno-builtin-memset"
 else
+  # For host builds, append to existing flags
+  CFLAGS="${CFLAGS:-} $BASE_FLAGS"
+  CXXFLAGS="${CXXFLAGS:-} $BASE_FLAGS"
   echo "build.sh: Using native host flags for $TARGET"
   # Native host specific flags (adjust as needed for different hosts)
   # Assume C++17 is desired for host too, but use standard library
@@ -159,18 +164,10 @@ else
     CXXFLAGS="$CXXFLAGS -arch $MACOS_ARCH -mmacosx-version-min=$MACOS_MIN_VER"
   fi
   # Add flags for other host OSes here if needed (e.g., Linux)
-fi
 
-# Tell the portable code path to compile (avoids AES-NI intrinsics)
-# This is crucial for BPF compatibility and ensures host uses same logic.
-CFLAGS="$CFLAGS -DVERUSHASH_PORTABLE=1"
-CXXFLAGS="$CXXFLAGS -DVERUSHASH_PORTABLE=1"
-
-# Explicitly disable the memcpy builtin optimization for SBF, as it seems unresolved.
-# This forces the compiler to use our provided implementation in haraka_portable.c
-if [[ "$TARGET" == *"bpf"* || "$TARGET" == *"sbf"* ]]; then
-  CFLAGS="$CFLAGS -fno-builtin-memcpy -fno-builtin-memset"
-  CXXFLAGS="$CXXFLAGS -fno-builtin-memcpy -fno-builtin-memset"
+  # Add portable flag (also needed for host tests using portable code)
+  CFLAGS="$CFLAGS -DVERUSHASH_PORTABLE=1"
+  CXXFLAGS="$CXXFLAGS -DVERUSHASH_PORTABLE=1"
 fi
 
 # ------------------------------------------------------------------------------
