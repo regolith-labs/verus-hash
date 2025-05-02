@@ -1,7 +1,8 @@
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
-    instruction::{AccountMeta, Instruction},
+    // instruction::{AccountMeta, Instruction}, // AccountMeta removed
+    instruction::Instruction, // Keep Instruction
     pubkey::Pubkey,
     signature::{read_keypair_file, Signer},
     transaction::Transaction,
@@ -42,19 +43,26 @@ fn main() -> anyhow::Result<()> {
     println!("Found nonce {:?} in {:.2?}", nonce_bytes, elapsed);
 
     // 4) Encode instruction data for Opcode 1 (On-chain verification)
-    // data = opcode(1) | challenge(32) | signer(32) | nonce(8) | target_BE(32)
+    // data = opcode(1) | msg_len(4 LE) | msg(challenge(32) + signer(32) + nonce(8)) | target_BE(32)
     let target_be = verus::difficulty_to_target(difficulty); // Get Big-Endian target for the program
     println!(
         "Calculated Target (BE) for on-chain verification: {:x?}",
         target_be
     );
 
-    let mut instruction_data = Vec::with_capacity(1 + 32 + 32 + 8 + 32);
+    // Construct the message (challenge + signer + nonce) - this is what the program needs to hash
+    let mut msg_data = Vec::with_capacity(32 + 32 + 8);
+    msg_data.extend_from_slice(&challenge);
+    msg_data.extend_from_slice(payer.pubkey().as_ref());
+    msg_data.extend_from_slice(&nonce_bytes);
+    let msg_len: u32 = msg_data.len() as u32; // Should be 72
+
+    // Construct the full instruction data according to the program's expected format
+    let mut instruction_data = Vec::with_capacity(1 + 4 + msg_data.len() + 32); // 1 + 4 + 72 + 32 = 109 bytes
     instruction_data.push(1u8); // Opcode 1
-    instruction_data.extend_from_slice(&challenge); // Challenge used in hashing
-    instruction_data.extend_from_slice(payer.pubkey().as_ref()); // Signer pubkey used in hashing
-    instruction_data.extend_from_slice(&nonce_bytes); // Found nonce (Little-Endian)
-    instruction_data.extend_from_slice(&target_be); // Target (Big-Endian)
+    instruction_data.extend_from_slice(&msg_len.to_le_bytes()); // Message length (4 bytes LE)
+    instruction_data.extend_from_slice(&msg_data); // The actual message (72 bytes)
+    instruction_data.extend_from_slice(&target_be); // Target (Big-Endian, 32 bytes)
 
     // 5) Build instruction for Opcode 1 (no accounts needed)
     let program_pubkey = Pubkey::from_str(PROGRAM_ID)?;

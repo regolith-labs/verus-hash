@@ -93,11 +93,30 @@ pub fn process_instruction(
                 .try_into()
                 .map_err(|_| ProgramError::InvalidInstructionData)?; // Should match size 32
 
-            // Perform the verification using the verus crate
+            // --- Log the hash calculated by the program ---
+            let hash_le = verus::verus_hash(msg); // Calculate hash (LE)
+            let mut hash_be = [0u8; 32];
+            for i in 0..32 {
+                hash_be[i] = hash_le[31 - i]; // Convert to BE
+            }
+            solana_program::msg!("Program calculated hash (LE): {:x?}", hash_le);
+            solana_program::msg!("Program calculated hash (BE): {:x?}", hash_be);
+            solana_program::msg!("Target (BE): {:x?}", target_be);
+            // --- End logging ---
+
+            // Perform the verification using the verus crate (using the already calculated hash_be)
+            // Note: verus::verify_hash recalculates the hash internally.
+            // We could optimize later, but for debugging, let's keep it simple.
             if verus::verify_hash(msg, target_be) {
+                // Alternative check using our logged hash_be:
+                // if hash_be <= *target_be {
+                solana_program::msg!("Hash verification successful (program).");
                 sol_log_compute_units(); // Log CUs on success
                 Ok(())
             } else {
+                solana_program::msg!(
+                    "Hash verification failed (program calculated hash > target)."
+                );
                 // Use a distinct error code for failed hash verification
                 Err(ProgramError::Custom(1)) // Error 1: Hash verification failed (hash > target)
             }
