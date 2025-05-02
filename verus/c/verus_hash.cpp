@@ -48,5 +48,10 @@ void verus_hash_v2(unsigned char *out, const unsigned char *in, unsigned int len
     }
 }
 
-/* Initialization is no longer needed externally. */
-/* Round constants are generated on the stack within haraka*_port calls. */
+/* Initialization function called once by host builds via FFI. */
+/* It's empty because constants are now baked in via haraka_rc_vrsc.inc */
+/* during compilation for both host and SBF targets. */
+/* We still need the symbol definition to satisfy the host linker. */
+void verus_hash_v2_init() {
+    // No operation needed here.
+}

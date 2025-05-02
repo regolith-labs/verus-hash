@@ -21,17 +21,27 @@ mod backend {
         // or similar, resulting in a 32-byte hash.
         fn verus_hash_v2(out_ptr: *mut u8, in_ptr: *const u8, len: usize);
 
-        // Initialization function is no longer needed via FFI.
-        // fn verus_hash_v2_init();
+        // Initialization function, called once on host builds.
+        // This is a NOP or non-existent on SBF builds.
+        fn verus_hash_v2_init();
     }
 
-    // Initialization logic (Once) is removed as the C library
-    // now uses pre-generated constants included at compile time.
+    // Use std::sync::Once for host builds to initialize constants exactly once.
+    // This requires the `std` feature, which is disabled for SBF (`no_std`).
+    #[cfg(not(target_arch = "bpf"))]
+    use std::sync::Once;
+    #[cfg(not(target_arch = "bpf"))]
+    static START: Once = Once::new();
 
     /// Compute the little-endian VerusHash 2.0 of `data` using the C backend.
     pub fn verus_hash(data: &[u8]) -> [u8; 32] {
-        // No explicit initialization needed here anymore.
-        // The linked C code uses the constants included during its compilation.
+        // Initialize constants once on host builds.
+        // This block is compiled out for SBF targets.
+        #[cfg(not(target_arch = "bpf"))]
+        START.call_once(|| {
+            // Safety: Calling the C init function. Assumed safe to call once.
+            unsafe { verus_hash_v2_init() };
+        });
 
         let mut out = [0u8; 32];
         // Call the FFI function. It's unsafe because it involves FFI.

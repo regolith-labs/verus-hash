@@ -8,8 +8,8 @@ extern "C" {
 // Round constants are generated internally using the "VRSC" seed.
 void verus_hash_v2(unsigned char *out, const unsigned char *in, unsigned int len);
 
-// Initialization function is no longer needed.
-
+// Initialization function - needed for host builds to link, even if empty.
+void verus_hash_v2_init();
 
 #ifdef __cplusplus
 }
