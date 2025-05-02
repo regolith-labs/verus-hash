@@ -1,0 +1,4 @@
+
+    cargo build-sbf
+    # or
+    # cargo build-sbf --release

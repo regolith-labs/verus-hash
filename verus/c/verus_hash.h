@@ -4,8 +4,12 @@
 extern "C" {
 #endif
 
+// Hashes input `in` of length `len` into `out` (32 bytes).
+// Round constants are generated internally using the "VRSC" seed.
 void verus_hash_v2(unsigned char *out, const unsigned char *in, unsigned int len);
-void verus_hash_v2_init();
+
+// Initialization function is no longer needed.
+// void verus_hash_v2_init();
 
 #ifdef __cplusplus
 }

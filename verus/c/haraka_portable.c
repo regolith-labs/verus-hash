@@ -35,6 +35,9 @@ void *verus_memset(void *p, int c, size_t n)
 #define memcpy  verus_memcpy
 #define memset  verus_memset
 
+/* Forward declaration for internal sponge function */
+static void haraka_S(uint8_t *out, uint64_t outlen, const uint8_t *in, uint64_t inlen);
+
 /*──────────────── compile-time AES T-tables (exact upstream math) ─*/
 #define WPOLY   0x011b
 #define F2(x)   ((x<<1) ^ (((x>>7)&1)*WPOLY))
@@ -102,39 +105,50 @@ static void unpackhi32(uint8_t *t, uint8_t *a, uint8_t *b)
 }
 
 /*──────────────── round constants ───────────────────────────────*/
-#include "haraka_constants.c"          /* → haraka_rc[40][16] */
+// Include the definitions of default_haraka_rc (const)
+#include "haraka_constants.c"
+// Writable constants (rc) are now generated on the stack per-call.
 
-static uint8_t rc[40][16];
-static void rc_init(void) { memcpy(rc, haraka_rc, 40*16); }
-
-#ifndef __BPF__
-__attribute__((constructor))  static void rc_host(void){ rc_init(); }
-#else /* __BPF__ is defined */
-__attribute__((section(".text.startup")))
-static int rc_bpf(void){ rc_init(); return 0; }
-#endif /* __BPF__ */
-
-/*──────────────── tweak_constants (optional) ────────────────────*/
-void tweak_constants(const uint8_t *pk, const uint8_t *sk, uint64_t len)
+/*──────────────── Internal Helper: Build Round Constants ────────*/
+/* Build personalised round constants into `dst` (40×16 bytes) */
+/* Uses the hardcoded "VRSC" seed, matching original init logic */
+static void make_rc(uint8_t dst[40][16])
 {
-    static uint8_t buf[40*16];
-    memcpy(rc, haraka_rc, 40*16);
+    // Use a temporary buffer on the stack for haraka_S output.
+    // Size matches the destination `dst`.
+    uint8_t buf[40*16]; // 640 bytes, stack-ok
 
-    if (sk){ haraka_S(buf,40*16,sk,len); memcpy(rc,buf,40*16); }
-    haraka_S(buf,40*16,pk,len);
-    memcpy(rc,buf,40*16);
+    // Initialize dst with the default constants
+    memcpy(dst, default_haraka_rc, 40*16);
+
+    // Apply primary key (pk) tweak ("VRSC")
+    // haraka_S writes its output into the temporary `buf`.
+    haraka_S(buf, 40*16, (const uint8_t*)"VRSC", 4);
+
+    // Copy the tweaked constants from `buf` into the final destination `dst`.
+    memcpy(dst, buf, 40*16);
+    // `dst` now holds the final constants needed by the permutations for this call.
 }
 
-/*──────────────── sponge utilities (Haraka-S) ───────────────────*/
-#define RATE 32
-static void haraka512_perm(uint8_t *o, const uint8_t *i);            /* fwd */
 
+/*──────────────── Internal Sponge Utilities (Haraka-S) ──────────*/
+#define RATE 32
+// Forward declaration for the permutation used by the sponge
+static void haraka512_perm_internal(uint8_t *o, const uint8_t *i, const uint8_t rc[40][16]);
+
+// Make sponge helpers static as they are no longer part of the public API
 static void sponge_absorb(uint8_t *s, const uint8_t *m,
                           uint64_t mlen, uint8_t pad)
 {
+    // Sponge needs temporary round constants just for its internal permutation calls.
+    // Generate them here. This is separate from the constants used by the main hash.
+    uint8_t sponge_rc[40][16];
+    make_rc(sponge_rc); // Use standard "VRSC" seed for sponge internal permutation
+
     while (mlen >= RATE){
         for (unsigned i=0;i<RATE;++i) s[i] ^= m[i];
-        haraka512_perm(s,s);
+        // Call the internal permutation function with the generated constants
+        haraka512_perm_internal(s, s, sponge_rc);
         m   += RATE;
         mlen-= RATE;
     }
@@ -145,10 +159,16 @@ static void sponge_absorb(uint8_t *s, const uint8_t *m,
     tmp[RATE-1] |= 0x80;
     for (unsigned i=0;i<RATE;++i) s[i] ^= tmp[i];
 }
+// Make sponge helpers static
 static void sponge_squeeze(uint8_t *out, uint64_t blocks, uint8_t *s)
 {
+    // Sponge needs temporary round constants just for its internal permutation calls.
+    uint8_t sponge_rc[40][16];
+    make_rc(sponge_rc); // Use standard "VRSC" seed
+
     while (blocks--){
-        haraka512_perm(s,s);
+        // Call the internal permutation function with the generated constants
+        haraka512_perm_internal(s, s, sponge_rc);
         memcpy(out,s,RATE);
         out += RATE;
     }
@@ -165,10 +185,10 @@ void haraka_S(uint8_t *out,uint64_t outlen,const uint8_t *in,uint64_t inlen)
     }
 }
 
-/*──────────────── Haraka-512 permutation ────────────────────────*/
-// Scratch buffers moved to stack to avoid static writable data (.bss)
-
-static void haraka512_perm(uint8_t *out,const uint8_t *in)
+/*──────────────── Internal Haraka-512 permutation ───────────────*/
+// Takes round constants `rc` as a parameter.
+// Renamed to avoid conflict with the old static declaration if any existed.
+static void haraka512_perm_internal(uint8_t *out, const uint8_t *in, const uint8_t rc[40][16])
 {
     // Allocate scratch buffers on the stack
     uint8_t scr512[64]; // Used as 's' below
@@ -180,6 +200,8 @@ static void haraka512_perm(uint8_t *out,const uint8_t *in)
 
     for (unsigned r=0;r<5;++r){
         for (unsigned j=0;j<2;++j){
+            // Use the passed-in round constants `rc`
+            // Note: Access rc directly as rc[index] which points to the start of the 16-byte block.
             aesenc(s     , rc[4*r*2+4*j  ]);
             aesenc(s+16  , rc[4*r*2+4*j+1]);
             aesenc(s+32  , rc[4*r*2+4*j+2]);
@@ -193,12 +215,19 @@ static void haraka512_perm(uint8_t *out,const uint8_t *in)
     memcpy(out,s,64);
 }
 
+/*──────────────── Public Haraka-512 Entry Point ─────────────────*/
 /* feed-forward + truncation (VerusHash needs this) */
-void haraka512_port(uint8_t *out,const uint8_t *in)
+void haraka512_port(uint8_t *out, const uint8_t *in)
 {
+    // Allocate round constants on the stack for this call
+    uint8_t rc[40][16]; // 640 bytes, stack-ok
+    make_rc(rc);        // Build constants using "VRSC" seed
+
     // Allocate local buffer on the stack
     uint8_t buf[64];
-    haraka512_perm(buf,in);
+    // Call the internal permutation with the stack-allocated constants
+    haraka512_perm_internal(buf, in, rc);
+
     /* XOR the original message (feed-forward) */
     for (unsigned i = 0; i < 64; ++i)
         buf[i] ^= in[i];
@@ -211,8 +240,9 @@ void haraka512_port(uint8_t *out,const uint8_t *in)
     memcpy(out + 24, buf + 56, 8);   /* Corrected offset */
 }
 
-/*──────────────── Haraka-256 (same style) ───────────────────────*/
-static void haraka256_perm(uint8_t *out,const uint8_t *in)
+/*──────────────── Internal Haraka-256 permutation ───────────────*/
+// Takes round constants `rc` as a parameter.
+static void haraka256_perm_internal(uint8_t *out, const uint8_t *in, const uint8_t rc[40][16])
 {
     // Allocate scratch buffers on the stack
     uint8_t scr256[32]; // Used as 's' below
@@ -224,6 +254,8 @@ static void haraka256_perm(uint8_t *out,const uint8_t *in)
 
     for (unsigned r=0;r<5;++r){
         for (unsigned j=0;j<2;++j){
+            // Use the passed-in round constants `rc`
+            // Note: Access rc directly as rc[index]. Indices 0..19 are used.
             aesenc(s    , rc[2*r*2+2*j  ]);
             aesenc(s+16 , rc[2*r*2+2*j+1]);
         }
@@ -231,10 +263,18 @@ static void haraka256_perm(uint8_t *out,const uint8_t *in)
         unpackhi32(s+16,s ,s+16);
         memcpy(s,t,16);
     }
+    // XOR input with the permuted state for feed-forward
     for (unsigned i=0;i<32;++i) out[i]=in[i]^s[i];
 }
-void haraka256_port(uint8_t *out,const uint8_t *in)
+
+/*──────────────── Public Haraka-256 Entry Point ─────────────────*/
+void haraka256_port(uint8_t *out, const uint8_t *in)
 {
-    haraka256_perm(out,in);
+    // Allocate round constants on the stack for this call
+    uint8_t rc[40][16]; // 640 bytes, stack-ok (needs full 40 for make_rc)
+    make_rc(rc);        // Build constants using "VRSC" seed
+
+    // Call the internal permutation with the stack-allocated constants
+    haraka256_perm_internal(out, in, rc);
 }
 /*───────────────────────────────────────────────────────────────*/

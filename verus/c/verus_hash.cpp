@@ -48,13 +48,5 @@ void verus_hash_v2(unsigned char *out, const unsigned char *in, unsigned int len
     }
 }
 
-/* ------- global init, called once from Rust ---------- */
-// Renamed from init_verus_hash to match Rust FFI declaration.
-// Removed __attribute__((constructor)) as Rust calls this explicitly.
-// Made non-static so it's visible externally.
-void verus_hash_v2_init()
-{
-    // Initialize constants using the primary seed "VRSC" and no secondary seed.
-    // Use C++ nullptr for null pointer constant.
-    tweak_constants((const unsigned char*)"VRSC", nullptr, 4);
-}
+/* Initialization is no longer needed externally. */
+/* Round constants are generated on the stack within haraka*_port calls. */

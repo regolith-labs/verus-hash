@@ -17,43 +17,20 @@ mod backend {
         // void verus_hash_v2(void *result, const void *data, size_t len)
         // or similar, resulting in a 32-byte hash.
         // Note: The exact name might differ (e.g., verus_hash_32); adjust if needed based on build.sh/C code.
+        // void verus_hash_v2(void *result, const void *data, size_t len)
+        // or similar, resulting in a 32-byte hash.
         fn verus_hash_v2(out_ptr: *mut u8, in_ptr: *const u8, len: usize);
 
-        // FFI declaration for the VerusHash initialization function.
-        fn verus_hash_v2_init();
+        // Initialization is no longer needed via FFI.
+        // fn verus_hash_v2_init();
     }
 
-    // Use std::sync::Once for thread-safe initialization on host targets.
-    // BPF is single-threaded, so Once is not needed there.
-    #[cfg(not(target_arch = "bpf"))]
-    use std::sync::Once;
-
-    #[cfg(not(target_arch = "bpf"))]
-    static INIT: Once = Once::new();
-
-    /// Initializes the VerusHash C library. Safe to call multiple times.
-    fn init_internal() {
-        #[cfg(not(target_arch = "bpf"))]
-        {
-            // Use Once::call_once for thread-safe initialization on host.
-            INIT.call_once(|| {
-                // Safety: Calling an external C function expected to initialize internal state.
-                // Assumed to be safe when called once.
-                unsafe { verus_hash_v2_init() };
-            });
-        }
-        // BPF: no writable statics allowed. The init call is idempotent and
-        // costs <100 ns, so just run it every time.
-        #[cfg(target_arch = "bpf")]
-        unsafe {
-            verus_hash_v2_init();
-        }
-    }
+    // Initialization logic (init_internal, Once) is removed as the C library
+    // now handles constant generation per-call on the stack.
 
     /// Compute the little-endian VerusHash 2.0 of `data` using the C backend.
     pub fn verus_hash(data: &[u8]) -> [u8; 32] {
-        // Ensure the C library is initialized before hashing.
-        init_internal();
+        // No initialization needed here anymore.
 
         let mut out = [0u8; 32];
         // Call the FFI function. It's unsafe because it involves FFI.

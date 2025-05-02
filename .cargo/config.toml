@@ -10,10 +10,13 @@ rustflags = [
 ]
 
 # Note: Solana uses bpfel-unknown-unknown, but cfg(target_arch = "bpf") matches it.
-# If you need flags specific ONLY to bpfel, use:
-# [target.bpfel-unknown-unknown]
-# rustflags = [...]
-# .cargo/config.toml
+# Explicitly define for bpfel-unknown-unknown to be certain.
+[target.bpfel-unknown-unknown]
+rustflags = [
+  # Prevent linker from creating .data.* / .bss.* subsections
+  "-C",
+  "link-arg=-Wl,--no-data-sections",
+]
 
 # Set linker arguments specifically for macOS targets (x86_64)
 # This ensures Rust links with the same deployment target used

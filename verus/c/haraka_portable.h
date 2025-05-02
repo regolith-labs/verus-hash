@@ -16,16 +16,10 @@ extern "C" {
 void *verus_memcpy(void *dst, const void *src, size_t n);
 void *verus_memset(void *dst, int c,          size_t n);
 
-/* —―― optional key-tweak (used by VerusHash) ――― */
-void tweak_constants(const uint8_t *pk_seed,
-                     const uint8_t *sk_seed,
-                     uint64_t       seed_len);
-
-/* The “Haraka-S” sponge (only needed for tweak_constants) */
-void haraka_S(uint8_t       *out, uint64_t outlen,
-              const uint8_t *in,  uint64_t inlen);
+/* Tweak constants and Haraka-S sponge are now internal implementation details */
 
 /* Public permutations with feed-forward (used by verus_hash.cpp) */
+/* Note: These now build constants internally on the stack */
 void haraka256_port(uint8_t *out, const uint8_t *in);
 void haraka512_port(uint8_t *out, const uint8_t *in);
 

@@ -107,8 +107,9 @@ echo "build.sh: Using CXX=$CXX" # This should now point to the SDK clang++
 # Base flags common to both BPF and host
 # -O3 : Optimization level
 # -fPIC : Position-independent code (required for static libs)
-# -ffunction-sections / -fdata-sections : Allow linker garbage collection
-BASE_FLAGS="-O3 -fPIC -ffunction-sections -fdata-sections $INC"
+# -ffunction-sections : Allow linker garbage collection for functions
+# -fno-data-sections : Prevent splitting globals/statics into per-symbol sections (avoids .bss/.data name length issues)
+BASE_FLAGS="-O3 -fPIC -ffunction-sections -fno-data-sections $INC"
 
 # Append base flags and includes to whatever Cargo provides
 CFLAGS="${CFLAGS:-} $BASE_FLAGS"
