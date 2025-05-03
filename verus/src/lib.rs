@@ -200,6 +200,39 @@ mod tests {
 
     // Removed generate_constants_file test.
     // Constants are now generated automatically by the build.rs script.
+
+    #[test]
+    fn test_host_matches_known_bpf_hash() {
+        // This test verifies that the hash computed by the host-compiled C code
+        // (used during `cargo test`) matches a known, pre-calculated hash value
+        // that is expected from the BPF-compiled version of the same C code.
+        // This helps catch regressions where C code behavior might diverge
+        // between host and BPF targets (e.g., due to alignment issues).
+
+        // 1. Define a fixed input buffer.
+        let input = [0u8; 64];
+
+        // 2. Define the expected hash output (Little-Endian).
+        // This value was obtained by running `verus::verus_hash(&[0u8; 64])`
+        // using the C implementation compiled for the host. The assumption is
+        // that a correct BPF build should yield the identical result.
+        // Hash: 9e943744647a183cf776ac757615e7719e943744647a183c75ac76cf15e77176 (LE)
+        let expected_le_hash = [
+            0x76, 0x71, 0xe7, 0x15, 0xcf, 0x76, 0xac, 0x75, 0x3c, 0x18, 0x7a, 0x64, 0x44, 0x37,
+            0x94, 0x9e, 0x71, 0xe7, 0x15, 0x76, 0x75, 0xac, 0x76, 0xcf, 0x3c, 0x18, 0x7a, 0x64,
+            0x44, 0x37, 0x94, 0x9e,
+        ];
+
+        // 3. Calculate the hash using the `verus_hash` function linked in the test environment.
+        // This uses the library built by `build.rs` for the host target.
+        let host_le_hash = verus_hash(&input);
+
+        // 4. Assert that the host hash matches the expected hash.
+        assert_eq!(
+            host_le_hash, expected_le_hash,
+            "Host hash output does not match the expected (known BPF) hash output!"
+        );
+    }
 } // End of tests module
 
 /// Converts a difficulty value into a 32-byte big-endian target.
