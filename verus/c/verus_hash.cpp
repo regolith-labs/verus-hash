@@ -63,13 +63,27 @@ void verus_hash_v2(unsigned char *out, const unsigned char *in, size_t len)
 
     // Mix each 64-bit lane of the input block with the corresponding state lane
     for (int lane=0; lane<8; ++lane) {
-        uint64_t m = ((uint64_t*)block)[lane]; // Input lane
+        uint64_t m; // Input lane
+        // Safely read 8 bytes from block into m
+        verus_memcpy(&m, &block[lane * 8], sizeof(uint64_t));
+
+        uint64_t s_lane; // State lane
+        // Safely read 8 bytes from S (state) into s_lane
+        verus_memcpy(&s_lane, &S[lane * 8], sizeof(uint64_t));
+
         uint64_t p = (lane&1) ? k2 : k1;       // Select CLHASH key based on lane
         // clmul_mix(key ^ state_lane, input_lane)
-        mix ^= clmul_mix(p ^ s64[lane], m);
+        mix ^= clmul_mix(p ^ s_lane, m);
     }
     // XOR the final mix value back into each lane of the state
-    for (int lane=0; lane<8; ++lane) s64[lane] ^= mix;
+    for (int lane=0; lane<8; ++lane) {
+        uint64_t s_lane;
+        // Safely read 8 bytes from S into s_lane
+        verus_memcpy(&s_lane, &S[lane * 8], sizeof(uint64_t));
+        s_lane ^= mix; // Apply the mix to the local variable
+        // Safely write the modified 8 bytes back to S
+        verus_memcpy(&S[lane * 8], &s_lane, sizeof(uint64_t));
+    }
 
     /* ------------- Final Haraka-256 ------------- */
     uint8_t F[32]; // Buffer for final hash output
