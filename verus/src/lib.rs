@@ -233,6 +233,71 @@ mod tests {
             "Host hash output does not match the expected (known BPF) hash output!"
         );
     }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    //  NEW: multi-variant golden-vector tests
+    //  Input buffer = "Test1234" * 12  (96 bytes)
+    // ─────────────────────────────────────────────────────────────────────────────
+    const TEST_96: &[u8] = b"Test1234Test1234Test1234Test1234\
+                             Test1234Test1234Test1234Test1234\
+                             Test1234Test1234Test1234Test1234";
+
+    const VH1_LE: [u8; 32] = hex_literal::hex!(
+        "84 11 15 f4 db 8a c9 a8 35 1f b2 25 37 bd 63 fa \
+         cc dd 42 20 e6 09 4a f1 06 d7 9b 56 e6 09 d7 2c"
+    );
+    const VH2_LE: [u8; 32] = hex_literal::hex!(
+        "ed 3d bd 1d 79 83 42 26 4c bf ee 4a 49 56 49 17 \
+         ed b6 8b 3a 5c 56 6d 1f 48 70 05 11 3b c4 ce 55"
+    );
+    const VH2B_LE: [u8; 32] = hex_literal::hex!(
+        "ac c9 b5 07 1e 92 66 9f 97 e9 e1 8b 38 d0 6a 8c \
+         a9 19 fc 66 62 5c d3 71 9e 1e 55 4e 1d af 71 f9"
+    );
+    const VH2B1_LE: [u8; 32] = hex_literal::hex!(
+        "b7 71 70 e3 51 1d 35 f4 6e a2 a1 bf d1 2d d2 d1 \
+         59 cf 8f af 0d 52 9b fb 7f 4a e4 0c 53 b9 f8 0e"
+    );
+
+    #[test]
+    fn verushash1_golden() {
+        // This test should FAIL unless the C code implements VerusHash v1
+        assert_eq!(
+            verus_hash(TEST_96),
+            VH1_LE,
+            "Hash does not match VerusHash v1"
+        );
+    }
+
+    #[test]
+    fn verushash2_golden() {
+        // This test should PASS if the C code implements VerusHash v2
+        assert_eq!(
+            verus_hash(TEST_96),
+            VH2_LE,
+            "Hash does not match VerusHash v2"
+        );
+    }
+
+    #[test]
+    fn verushash2b_golden() {
+        // This test should FAIL unless the C code implements VerusHash v2b
+        assert_eq!(
+            verus_hash(TEST_96),
+            VH2B_LE,
+            "Hash does not match VerusHash v2b"
+        );
+    }
+
+    #[test]
+    fn verushash2b1_golden() {
+        // This test should FAIL unless the C code implements VerusHash v2b1
+        assert_eq!(
+            verus_hash(TEST_96),
+            VH2B1_LE,
+            "Hash does not match VerusHash v2b1"
+        );
+    }
 } // End of tests module
 
 /// Converts a difficulty value into a 32-byte big-endian target.
