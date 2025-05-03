@@ -53,7 +53,7 @@ void verus_hash_v2(unsigned char *out, const unsigned char *in, size_t len)
 
 
     /* ------------- CLHASH mix (first 64 bytes of input) ------------- */
-    uint64_t *s64 = (uint64_t*)S; // Treat state S as array of 8 uint64_t
+    // uint64_t *s64 = (uint64_t*)S; // Removed: No longer used, access via verus_memcpy
     uint64_t k1 = CLHASH_K1, k2 = CLHASH_K2;
     uint64_t mix = 0;
     uint8_t block[64]; // Buffer for the first 64 bytes of input (or less, padded)
