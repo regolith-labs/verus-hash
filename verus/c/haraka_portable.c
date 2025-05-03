@@ -62,8 +62,11 @@ static void aesenc(uint8_t *s, const uint8_t *rk)
 {
     const uint32_t *t = T[0];
 
-    uint32_t x0 = ((uint32_t *)s)[0], x1 = ((uint32_t *)s)[1];
-    uint32_t x2 = ((uint32_t *)s)[2], x3 = ((uint32_t *)s)[3];
+    // Load state using safe helper
+    uint32_t x0 = load_u32(s +  0);
+    uint32_t x1 = load_u32(s +  4);
+    uint32_t x2 = load_u32(s +  8);
+    uint32_t x3 = load_u32(s + 12);
 
     uint32_t y0 = t[x0 & 0xff]; x0 >>= 8;
     uint32_t y1 = t[x1 & 0xff]; x1 >>= 8;
@@ -82,10 +85,11 @@ static void aesenc(uint8_t *s, const uint8_t *rk)
 
     y0 ^= t[x3]; y1 ^= t[x0]; y2 ^= t[x1]; y3 ^= t[x2];
 
-    ((uint32_t *)s)[0] = y0 ^ ((uint32_t *)rk)[0];
-    ((uint32_t *)s)[1] = y1 ^ ((uint32_t *)rk)[1];
-    ((uint32_t *)s)[2] = y2 ^ ((uint32_t *)rk)[2];
-    ((uint32_t *)s)[3] = y3 ^ ((uint32_t *)rk)[3];
+    // Load round key and store result using safe helpers
+    store_u32(s +  0, y0 ^ load_u32(rk +  0));
+    store_u32(s +  4, y1 ^ load_u32(rk +  4));
+    store_u32(s +  8, y2 ^ load_u32(rk +  8));
+    store_u32(s + 12, y3 ^ load_u32(rk + 12));
 }
 
 /*──────────────── 32-bit unpack helpers (byte-shuffles) ──────────*/
@@ -194,12 +198,14 @@ static void haraka256_perm_internal(uint8_t *out, const uint8_t *in)
         for (unsigned j=0;j<2;++j){
             // Use the static precomputed round constants `rc`
             // Note: Indices 0..19 are used.
+            // Call the single aesenc function which uses safe load/store
             aesenc(s    , rc[2*r*2+2*j  ]);
             aesenc(s+16 , rc[2*r*2+2*j+1]);
         }
+        // Mixing step
         unpacklo32(t ,s   ,s+16);
         unpackhi32(s+16,s ,s+16);
-        memcpy(s,t,16);
+        verus_memcpy(s,t,16); // Use verus_memcpy: Copy t back to the first half of s
     }
     // XOR input with the permuted state for feed-forward
     for (unsigned i=0;i<32;++i) out[i]=in[i]^s[i];
