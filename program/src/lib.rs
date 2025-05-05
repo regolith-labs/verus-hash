@@ -3,7 +3,7 @@
 use bytemuck::{Pod, Zeroable};
 use solana_program::{
     self,
-    account_info::{next_account_info, AccountInfo},
+    account_info::AccountInfo, // Removed next_account_info
     declare_id,
     entrypoint::ProgramResult,
     instruction::{AccountMeta, Instruction},
@@ -103,11 +103,6 @@ pub fn process_instruction(
             let target_be: &[u8; 32] = target
                 .try_into()
                 .map_err(|_| ProgramError::InvalidInstructionData)?; // Should match size 32
-
-            // --- Log the round constants used by the program ---
-            let rc = verus::haraka_rc();
-            solana_program::msg!("RC[0..16] on-chain = {:02x?}", &rc[..16]);
-            // --- End RC logging ---
 
             // --- Log the hash calculated by the program ---
             // The `msg` slice is now the correct 64-byte buffer to hash

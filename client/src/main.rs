@@ -2,7 +2,8 @@ use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
     // instruction::{AccountMeta, Instruction}, // AccountMeta removed
-    instruction::Instruction, // Keep Instruction
+    compute_budget::ComputeBudgetInstruction, // Import ComputeBudgetInstruction
+    instruction::Instruction,
     pubkey::Pubkey,
     signature::{read_keypair_file, Signer},
     transaction::Transaction,
@@ -20,7 +21,6 @@ const RPC_URL: &str = "http://localhost:8899";
 fn main() -> anyhow::Result<()> {
     // 1) connection + payer
     let client = RpcClient::new_with_commitment(RPC_URL.to_string(), CommitmentConfig::confirmed());
-    println!("RC[0..16] in client  = {:02x?}", &verus::haraka_rc()[..16]); // Print constants used by client
     let payer_path = dirs::home_dir().unwrap().join(".config/solana/id.json");
     let payer =
         read_keypair_file(&payer_path).map_err(|_err| anyhow::anyhow!("failed to read keypair"))?;
@@ -30,7 +30,7 @@ fn main() -> anyhow::Result<()> {
     // Using a placeholder challenge for now. In a real scenario, this might
     // come from the network state or a specific account.
     let challenge = [0u8; 32]; // Use zero challenge for testing
-    let difficulty: u64 = 5; // Lowered difficulty significantly for faster testing
+    let difficulty: u64 = 10; // Lowered difficulty significantly for faster testing
 
     // 3) Find a valid nonce
     println!(
@@ -73,13 +73,15 @@ fn main() -> anyhow::Result<()> {
         data: instruction_data,
     };
 
-    // 6) Send transaction for on-chain verification
-    println!("Sending transaction for on-chain verification...");
+    // 6) Request more Compute Units and Send transaction
+    println!("Requesting more Compute Units and sending transaction...");
+    let compute_unit_limit_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_000_000); // Request 1M CUs
+
     let recent_blockhash = client.get_latest_blockhash()?;
     let tx = Transaction::new_signed_with_payer(
-        &[ix],                 // Only include our Opcode 1 instruction
-        Some(&payer.pubkey()), // Payer is still the fee payer
-        &[&payer],             // Signer is the fee payer
+        &[compute_unit_limit_ix, ix], // Add CU limit instruction *before* main ix
+        Some(&payer.pubkey()),        // Payer is still the fee payer
+        &[&payer],                    // Signer is the fee payer
         recent_blockhash,
     );
 
