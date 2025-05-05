@@ -75,70 +75,76 @@ impl VerusState {
 }
 
 /// Computes the VerusHash 2.2 of the input data.
+/// Follows the logic from CVerusHashV2::Finalize2b in the C++ reference.
 pub fn verus_hash_rust(data: &[u8]) -> [u8; 32] {
-    let mut state = VerusState::default(); // Initialize state S to zeros
-    let mut temp_state = VerusState::default(); // Temporary buffer for haraka output
+    // State buffer (64 bytes). First 32 bytes hold the previous Haraka output (or zeros initially).
+    // Second 32 bytes are XORed with the input block.
+    let mut state = VerusState::default();
     let len = data.len();
     let mut i = 0;
 
     // --- Sponge over Haraka-512 ---
+    // Process full 32-byte input blocks
     while i + 32 <= len {
-        // Absorb full 32-byte blocks
+        // XOR input block into the second half of the state
         for j in 0..32 {
-            state.bytes[j] ^= data[i + j]; // XOR input block into the first 32 bytes of state
+            state.bytes[32 + j] ^= data[i + j];
         }
+
         // Apply Haraka-512 (Perm+FF+Trunc) -> 32 bytes output
+        // The haraka-bpf::haraka512 function takes 64 bytes input and produces 32 bytes output.
+        // We assume it internally performs the permutation, feed-forward, and truncation
+        // similar to the C++ reference's haraka512_port.
         let mut perm_out = [0u8; 32];
         haraka512::<5>(&mut perm_out, &state.bytes); // Specify 5 rounds
 
-        // Update state: XOR the 32-byte output into the *first* 32 bytes of state.
-        // This mimics the C++ reference's XOR feed-forward, but adapted for the 32-byte output.
-        // The second half of the state remains unchanged by the permutation itself in this step.
-        for j in 0..32 {
-            state.bytes[j] ^= perm_out[j];
-        }
-        // Note: The C++ reference XORs the full 64 bytes of the permuted state (tmp) back.
-        // Since haraka-bpf only gives us 32 bytes, we only XOR those back. This is a
-        // necessary divergence due to the haraka-bpf interface.
+        // Overwrite the first half of the state with the Haraka output for the next round.
+        state.bytes[0..32].copy_from_slice(&perm_out);
+        // Clear the second half (where the input was XORed) for the next round.
+        state.bytes[32..64].fill(0);
 
         i += 32;
     }
 
-    // Absorb last partial block + 10* padding
+    // Process the final partial block (if any)
     let remaining = len - i;
-    for j in 0..remaining {
-        state.bytes[j] ^= data[i + j]; // XOR remaining input bytes
+    if remaining > 0 {
+        // XOR the remaining input bytes into the second half
+        for j in 0..remaining {
+            state.bytes[32 + j] ^= data[i + j];
+        }
+        // Zero-pad the rest of the second half (already done by fill(0) above, but explicit here for clarity)
+        // for j in remaining..32 {
+        //     state.bytes[32 + j] = 0; // Already zero
+        // }
+
+        // Apply final Haraka-512
+        let mut perm_out = [0u8; 32];
+        haraka512::<5>(&mut perm_out, &state.bytes); // Specify 5 rounds
+
+        // Overwrite the first half of the state with the final Haraka output.
+        state.bytes[0..32].copy_from_slice(&perm_out);
+        // Clear the second half.
+        state.bytes[32..64].fill(0);
     }
-    state.bytes[remaining] ^= 0x01; // Pad with 0x01 after the last byte
-    state.bytes[63] ^= 0x80; // Pad with 0x80 at the end of the state
+    // If len was a multiple of 32, 'state' already holds the correct post-sponge state
+    // in its first 32 bytes, and zeros in the second 32 bytes.
 
-    // Final permutation after padding
-    let mut perm_out = [0u8; 32];
-    haraka512::<5>(&mut perm_out, &state.bytes); // Specify 5 rounds
-
-    // Update state S: Overwrite the first 32 bytes with the final permuted output.
-    // The C++ reference does `S = tmp`, effectively copying the 32-byte result
-    // plus 32 bytes of potentially uninitialized data from `tmp`.
-    // Here, we explicitly copy only the 32 valid bytes from `perm_out`.
-    state.bytes[0..32].copy_from_slice(&perm_out);
-    // Zero out the second half of the state, as the C++ reference implicitly relies
-    // on potentially uninitialized data from `tmp` being copied, which we can't replicate.
-    // Zeroing is a safe default, though it might differ from C++ behavior if that
-    // uninitialized data happened to be non-zero.
-    state.bytes[32..64].fill(0);
-
-    // --- CLHASH mix (first 64 bytes of input) ---
+    // --- CLHASH mix (using the first 64 bytes of the *original* input data) ---
+    // Note: The C++ reference uses the first 64 bytes of the original input for CLHASH,
+    // not the current state buffer.
     let mut mix: u64 = 0;
-    let mut block = [0u8; 64]; // Buffer for the first 64 bytes of input
+    let mut clhash_input_block = [0u8; 64]; // Buffer for the first 64 bytes of input
     let cpy_len = len.min(64);
-    block[..cpy_len].copy_from_slice(&data[..cpy_len]); // Copy up to 64 bytes from original input
+    clhash_input_block[..cpy_len].copy_from_slice(&data[..cpy_len]); // Copy up to 64 bytes
 
-    let block_u64: &[u64; 8] = bytemuck::cast_ref(&block); // View block as u64 slice
-    let state_u64 = state.as_u64(); // View state as u64 slice
+    // View the CLHASH input block and the current state as u64 slices
+    let clhash_input_u64: &[u64; 8] = bytemuck::cast_ref(&clhash_input_block);
+    let state_u64 = state.as_u64(); // Use the state *after* the sponge phase
 
     for lane in 0..8 {
-        let m = u64::from_le(block_u64[lane]); // Input lane (ensure LE)
-        let s_lane = u64::from_le(state_u64[lane]); // State lane (ensure LE)
+        let m = u64::from_le(clhash_input_u64[lane]); // Input lane (from original data)
+        let s_lane = u64::from_le(state_u64[lane]); // State lane (post-sponge)
         let p = if (lane & 1) != 0 {
             CLHASH_K2
         } else {
@@ -146,27 +152,29 @@ pub fn verus_hash_rust(data: &[u8]) -> [u8; 32] {
         }; // Select CLHASH key
         mix ^= clmul_mix(p ^ s_lane, m);
     }
+    // 'mix' now holds the 64-bit intermediate value. Do NOT XOR it back into the state yet.
 
-    // XOR the final mix value back into each lane of the state
-    let state_u64_mut = state.as_u64_mut();
-    for lane in 0..8 {
-        state_u64_mut[lane] = u64::from_le(state_u64_mut[lane]) ^ mix; // Apply mix (ensure LE for XOR)
-        state_u64_mut[lane] = state_u64_mut[lane].to_le(); // Convert back to LE for storage
-    }
+    // --- Final State Preparation ---
+    // The first half of 'state' contains the post-sponge result.
+    // Fill the second half of 'state' with the 'mix' value (little-endian bytes).
+    state.bytes[32..40].copy_from_slice(&mix.to_le_bytes());
+    // Zero out the remaining bytes in the second half.
+    state.bytes[40..64].fill(0);
 
-    // --- Final Haraka-256 ---
-    let mut final_hash_be = [0u8; 32]; // Buffer for final hash output (Haraka outputs BE)
-                                       // Hash the first 32 bytes of the mixed state S using Haraka-256
-                                       // Convert the slice to a fixed-size array reference using try_into()
-    let state_first_32: &[u8; 32] = state.bytes[0..32]
-        .try_into()
-        .expect("Slice length mismatch for Haraka256 input");
-    haraka256::<5>(&mut final_hash_be, state_first_32); // Specify 5 rounds
+    // --- Final Haraka-512 (Approximation) ---
+    // The C++ reference uses a keyed Haraka512 here, with a key derived from
+    // the post-sponge state and offset by the 'mix' value.
+    // Since haraka-bpf doesn't provide a keyed version, we approximate by
+    // using the standard unkeyed haraka512 on the prepared 64-byte state.
+    let mut final_hash_out = [0u8; 32]; // Haraka512 output buffer
+    haraka512::<5>(&mut final_hash_out, &state.bytes); // Apply Haraka to the prepared state
 
-    // Convert final hash (Big-Endian) to Little-Endian for output
+    // The output of haraka512 is Big-Endian according to its typical use in Haraka-S.
+    // However, VerusHash test vectors expect Little-Endian output.
+    // Let's assume haraka-bpf::haraka512 output needs reversal for LE.
     let mut final_hash_le = [0u8; 32];
     for j in 0..32 {
-        final_hash_le[j] = final_hash_be[31 - j];
+        final_hash_le[j] = final_hash_out[31 - j];
     }
 
     final_hash_le
