@@ -14,6 +14,11 @@ build = "build.rs"  # Ensure this line is present
 
 [dependencies]
 cfg-if = "1.0"
+haraka-bpf = { git = "https://github.com/regolith-labs/haraka-bpf", rev = "10ad564" } # Using specific rev for haraka-bpf
+bytemuck = { version = "1.16", features = [
+  "derive",
+  "extern_crate_alloc",
+] } # Needed for safe casting/transmuting
 
 [features]
 # Feature to explicitly enable compiling the C backend even on host targets.

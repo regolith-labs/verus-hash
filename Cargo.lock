@@ -1671,6 +1671,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "haraka-bpf"
+version = "0.1.0"
+source = "git+https://github.com/regolith-labs/haraka-bpf?rev=10ad564#10ad564df1f2a1764d6ebedc837607a8ffd58559"
+dependencies = [
+ "aes",
+ "arrayref",
+]
+
+[[package]]
 name = "hash32"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7338,8 +7347,10 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 name = "verus"
 version = "0.0.1"
 dependencies = [
+ "bytemuck",
  "cc",
  "cfg-if",
+ "haraka-bpf",
  "hex",
  "hex-literal",
 ]
