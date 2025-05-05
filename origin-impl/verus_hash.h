@@ -15,7 +15,7 @@ This provides the PoW hash function for Verus, enabling CPU mining.
 #include <vector>
 
 #include "uint256.h"
-#include "crypto/verus_clhash.h"
+#include "verus_clhash.h"
 
 extern "C" 
 {
