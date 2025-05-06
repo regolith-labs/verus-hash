@@ -8,9 +8,6 @@ documentation.workspace = true
 repository.workspace = true
 readme.workspace = true
 keywords.workspace = true
-# tell Cargo there's a native lib called `verushash`
-links = "verushash" # Restore this key
-build = "build.rs"  # Ensure this line is present
 
 [dependencies]
 cfg-if = "1.0"
@@ -20,21 +17,10 @@ bytemuck = { version = "1.16", features = [
   "extern_crate_alloc",
 ] } # Needed for safe casting/transmuting
 
-[features]
-# Feature to explicitly enable compiling the C backend even on host targets.
-# This is useful for tests to ensure they use the same hash logic as the BPF program.
-portable = []
-# Default enables the portable C backend everywhere (host and BPF).
-# BPF builds will use the C backend regardless due to build.rs logic,
-# but this ensures host builds (like tests) also use it by default.
-default = ["portable"]
 
 [dev-dependencies]
 hex = "0.4"
 hex-literal = "0.4"
-
-[build-dependencies]
-cc = "1.0"
 
 [lib]
 crate-type = ["cdylib", "rlib"] # cdylib is what Solana wants
