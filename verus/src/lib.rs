@@ -108,10 +108,7 @@ pub fn verify_hash(data: &[u8], target_be: &[u8; 32]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // Use hex crate only in tests (requires std)
     extern crate std;
-    use hex::FromHex;
-    // Removed unused import: use std::vec;
 
     #[test]
     fn length_is_32() {

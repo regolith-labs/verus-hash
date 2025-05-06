@@ -1,4 +1,4 @@
-// (C) 2023 The Verus Developers
+// (C) 2018 The Verus Developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -9,8 +9,13 @@ inputs only, Verus Hash takes any length of input and produces a 256
 bit output.
 */
 #include <string.h>
-#include "crypto/common.h"
-#include "crypto/verus_hash.h"
+#include "common.h"
+#include "verus_hash.h"
+
+extern "C" {
+#include "haraka.h"
+#include "haraka_portable.h"
+}
 
 void (*CVerusHash::haraka512Function)(unsigned char *out, const unsigned char *in);
 
@@ -155,7 +160,7 @@ CVerusHashV2 &CVerusHashV2::Write(const unsigned char *data, size_t len)
     unsigned char *tmp;
 
     // digest up to 32 bytes at a time
-    for ( int pos = 0; pos < len; )
+    for (int pos = 0; pos < len; )
     {
         int room = 32 - curPos;
 
