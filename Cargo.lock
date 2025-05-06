@@ -7348,7 +7348,6 @@ name = "verus"
 version = "0.0.1"
 dependencies = [
  "bytemuck",
- "cc",
  "cfg-if",
  "haraka-bpf",
  "hex",

@@ -7,12 +7,10 @@ publish = false
 
 [dependencies]
 anyhow = { workspace = true, optional = true } # Make optional if not always needed
-dirs = { workspace = true, optional = true } # Make optional if not always needed
+dirs = { workspace = true, optional = true }   # Make optional if not always needed
 solana-client = { workspace = true }
 solana-sdk = { workspace = true }
-verus = { path = "../verus", features = [
-  "portable",
-] } # Add verus as regular dependency
+verus = { path = "../verus" }                  # Add verus as regular dependency
 # Add other dependencies if needed, inheriting from workspace where possible
 
 # Add features if you made dependencies optional
@@ -26,9 +24,7 @@ tokio = { version = "1.37", features = [
   "macros",
   "rt-multi-thread",
 ] } # Or use workspace version
-verus = { path = "../verus", features = [
-  "portable",
-] } # Keep portable for tests if needed, but client now depends directly
+verus = { path = "../verus" }
 verus-program = { path = "../program", features = [
   "no-entrypoint",
 ] } # Need program crate for ID and processor macro
