@@ -16,6 +16,49 @@
 #  pragma clang section rodata = ".rodata" /* Read-only globals (const) */
 #endif /* __clang__ && __ELF__ */
 
+/* ---- Full VerusHash 1.0 Implementation ---- */
+// Based on CVerusHash::Hash from origin-impl, using haraka512_port_zero
+
+void verus_hash(unsigned char *result, const unsigned char *data, size_t len)
+{
+    unsigned char buf[128]; // Stack buffer for sponge state
+    unsigned char *bufPtr = buf;
+    int nextOffset = 64;
+    size_t pos = 0;
+    unsigned char *bufPtr2 = bufPtr + nextOffset;
+    const unsigned char *ptr = data;
+
+    // Initialize the first 32 bytes of the buffer (initial state) to zero
+    verus_memset(bufPtr, 0, 32);
+
+    // Digest up to 32 bytes at a time
+    for ( ; pos < len; pos += 32)
+    {
+        // Copy next 32 bytes (or less with padding) into the second half of the current buffer
+        if (len - pos >= 32)
+        {
+            verus_memcpy(bufPtr + 32, ptr + pos, 32);
+        }
+        else
+        {
+            size_t i = len - pos;
+            verus_memcpy(bufPtr + 32, ptr + pos, i);
+            // Zero-pad the remaining bytes in the second half
+            verus_memset(bufPtr + 32 + i, 0, 32 - i);
+        }
+        // Apply the Haraka-512 permutation with zero constants
+        haraka512_port_zero(bufPtr2, bufPtr);
+
+        // Swap buffer pointers for the next round
+        bufPtr2 = bufPtr;
+        bufPtr += nextOffset;
+        nextOffset *= -1;
+    }
+    // The final 32-byte hash is in the buffer pointed to by bufPtr
+    verus_memcpy(result, bufPtr, 32);
+}
+
+
 /* ---- Full VerusHash 2.2 Implementation ---- */
 
 void verus_hash_v2(unsigned char *out, const unsigned char *in, size_t len)

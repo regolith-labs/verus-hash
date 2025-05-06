@@ -36,6 +36,11 @@ static inline void store_u32(uint8_t *p, uint32_t v)
 void haraka256_port(uint8_t *out, const uint8_t *in);
 void haraka512_port(uint8_t *out, const uint8_t *in);
 
+/* Applies the 512-bit Haraka permutation to in, using zero key. */
+void haraka512_perm_zero(unsigned char *out, const unsigned char *in);
+/* Implementation of Haraka-512, using zero key */
+void haraka512_port_zero(unsigned char *out, const unsigned char *in);
+
 /* get_vrsc_constants is removed; generation now happens in build.rs */
 
 #ifdef __cplusplus

@@ -123,7 +123,7 @@ fn find_nonce(challenge: &[u8; 32], signer: &Pubkey, difficulty: u64) -> [u8; 8]
         hash_data[56..64].copy_from_slice(&nonce_bytes); // 8 bytes nonce
 
         // Compute the hash (Little-Endian) using the 64-byte buffer
-        let hash_le = verus::verus_hash(&hash_data);
+        let hash_le = verus::verus_hash_v2(&hash_data);
 
         // Convert hash to Big-Endian for comparison
         let mut hash_be = [0u8; 32];

@@ -242,8 +242,8 @@ fn main() {
     // Add paths relative to CARGO_MANIFEST_DIR (verus crate root) using the 'c' directory
     println!("cargo:rerun-if-changed=c/verus_hash.cpp");
     println!("cargo:rerun-if-changed=c/verus_hash.h");
-    println!("cargo:rerun-if-changed=c/haraka_portable.c"); // This now includes the generated constants
-    println!("cargo:rerun-if-changed=c/haraka_portable.h");
+    println!("cargo:rerun-if-changed=c/haraka_portable.c"); // Includes generated constants AND zero-key functions
+    println!("cargo:rerun-if-changed=c/haraka_portable.h"); // Includes declarations for zero-key functions
     println!("cargo:rerun-if-changed=c/common.h");
     println!("cargo:rerun-if-changed=c/uint256.cpp");
     println!("cargo:rerun-if-changed=c/uint256.h");

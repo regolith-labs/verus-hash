@@ -21,6 +21,10 @@ mod backend {
         // or similar, resulting in a 32-byte hash.
         fn verus_hash_v2(out_ptr: *mut u8, in_ptr: *const u8, len: usize);
 
+        // FFI declaration for the VerusHash V1 function from the C library.
+        // Name in C is `verus_hash`.
+        fn verus_hash(out_ptr: *mut u8, in_ptr: *const u8, len: usize);
+
         // Expose the static round constant array from the C code.
         // Its actual name in haraka_portable.c is `rc`.
         static rc: [u8; 40 * 16]; // 640 bytes total
@@ -33,12 +37,22 @@ mod backend {
     // No runtime initialization needed anymore.
 
     /// Compute the little-endian VerusHash 2.0 of `data` using the C backend.
-    pub fn verus_hash(data: &[u8]) -> [u8; 32] {
+    pub fn verus_hash_v2_impl(data: &[u8]) -> [u8; 32] {
         // Constants are baked in, no runtime initialization required.
         let mut out = [0u8; 32];
-        // Call the FFI function. It's unsafe because it involves FFI.
+        // Call the FFI function for V2. It's unsafe because it involves FFI.
         // Safety relies on the C implementation being correct.
         unsafe { verus_hash_v2(out.as_mut_ptr(), data.as_ptr(), data.len()) };
+        out
+    }
+
+    /// Compute the little-endian VerusHash 1.0 of `data` using the C backend.
+    pub fn verus_hash_v1_impl(data: &[u8]) -> [u8; 32] {
+        // Constants are baked in, no runtime initialization required.
+        let mut out = [0u8; 32];
+        // Call the FFI function for V1. It's unsafe because it involves FFI.
+        // Safety relies on the C implementation being correct.
+        unsafe { verus_hash(out.as_mut_ptr(), data.as_ptr(), data.len()) };
         out
     }
 
@@ -56,28 +70,43 @@ mod backend {
 // a non-existent pure-Rust fallback.
 #[cfg(not(any(target_arch = "bpf", feature = "portable")))]
 mod backend {
-    // This function will never be called, but needs to exist for the pub use below.
-    pub fn verus_hash(_data: &[u8]) -> [u8; 32] {
+    // These functions will never be called, but need to exist for the pub use below.
+    pub fn verus_hash_v1_impl(_data: &[u8]) -> [u8; 32] {
         compile_error!(
             "The `verus` crate must be built for the BPF target or with the `portable` feature enabled."
         );
     }
+    pub fn verus_hash_v2_impl(_data: &[u8]) -> [u8; 32] {
+        compile_error!(
+            "The `verus` crate must be built for the BPF target or with the `portable` feature enabled."
+        );
+    }
+    // haraka_rc is fine as it's a static, but for consistency:
+    pub fn haraka_rc() -> &'static [u8; 640] {
+        compile_error!(
+            "The `verus` crate must be built for the BPF target or with the `portable` feature enabled."
+        );
+        // Unreachable, but satisfies the type checker
+        static DUMMY_RC: [u8; 640] = [0; 640];
+        &DUMMY_RC
+    }
 }
 
-// Re-export the verus_hash function and the constants accessor from the backend module.
+// Re-export the hash functions and the constants accessor from the backend module.
 pub use backend::haraka_rc;
-pub use backend::verus_hash; // Export the new function
+pub use backend::verus_hash_v1_impl as verus_hash_v1; // Export V1 hash function
+pub use backend::verus_hash_v2_impl as verus_hash_v2; // Export V2 hash function
 
 // --- FFI Helper for Constant Generation (Host Only) ---
 // Removed: Constants are now generated during the build process by build.rs
 
 /// Return `true` if `verus_hash(data)` ≤ `target_be` (both big-endian).
 /// *Avoids BigUint and extra Vec allocations for Solana BPF compatibility.*
-/// This function now unconditionally uses the `verus_hash` function exported above,
-/// which points to the C backend when compiled correctly.
+/// This function now uses the `verus_hash_v2` function exported above,
+/// which points to the VerusHash V2.0 C backend when compiled correctly.
 pub fn verify_hash(data: &[u8], target_be: &[u8; 32]) -> bool {
     // Compute the hash (Little-Endian) using the C backend via FFI
-    let le = verus_hash(data);
+    let le = verus_hash_v2(data); // Explicitly use V2 hash
 
     // Reverse in place into a stack-allocated buffer to get big-endian hash
     let mut hash_be = [0u8; 32];
@@ -111,9 +140,15 @@ mod tests {
     extern crate std;
 
     #[test]
-    fn length_is_32() {
-        // Uses backend::verus_hash -> C FFI
-        assert_eq!(verus_hash(b"").len(), 32);
+    fn length_is_32_v1() {
+        // Uses backend::verus_hash_v1_impl -> C FFI
+        assert_eq!(verus_hash_v1(b"").len(), 32);
+    }
+
+    #[test]
+    fn length_is_32_v2() {
+        // Uses backend::verus_hash_v2_impl -> C FFI
+        assert_eq!(verus_hash_v2(b"").len(), 32);
     }
 
     #[test]
@@ -132,7 +167,8 @@ mod tests {
     #[test]
     fn verify_known_vector_success() {
         // Verify that the known hash of "abc" meets a target slightly above it.
-        let hash_le = verus_hash(b"abc");
+        // Using V2 hash for this generic verification test.
+        let hash_le = verus_hash_v2(b"abc");
         let mut hash_be = [0u8; 32];
         for i in 0..32 {
             hash_be[i] = hash_le[31 - i];
@@ -155,7 +191,8 @@ mod tests {
     #[test]
     fn verify_known_vector_fail() {
         // Verify that the known hash of "abc" fails a target slightly below it.
-        let hash_le = verus_hash(b"abc");
+        // Using V2 hash for this generic verification test.
+        let hash_le = verus_hash_v2(b"abc");
         let mut hash_be = [0u8; 32];
         for i in 0..32 {
             hash_be[i] = hash_le[31 - i];
@@ -211,8 +248,8 @@ mod tests {
 
     #[test]
     fn verushash1_golden() {
-        // This test should FAIL unless the C code implements VerusHash v1
-        let actual_hash = verus_hash(TEST_96);
+        // This test should PASS if the C code implements VerusHash v1
+        let actual_hash = verus_hash_v1(TEST_96); // Use V1 hash
         assert_eq!(
             actual_hash,
             VH1_LE,
@@ -225,7 +262,7 @@ mod tests {
     #[test]
     fn verushash2_golden() {
         // This test should PASS if the C code implements VerusHash v2
-        let actual_hash = verus_hash(TEST_96);
+        let actual_hash = verus_hash_v2(TEST_96); // Use V2 hash
         assert_eq!(
             actual_hash,
             VH2_LE,
@@ -239,7 +276,7 @@ mod tests {
     fn verushash2b_golden() {
         // This test expects VerusHash v2b.
         // Per C++ reference output for this input, v2b hash is same as v2 hash.
-        let actual_hash = verus_hash(TEST_96);
+        let actual_hash = verus_hash_v2(TEST_96); // Use V2 hash (which is V2.0)
         assert_eq!(
             actual_hash,
             VH2B_LE,
@@ -253,7 +290,7 @@ mod tests {
     fn verushash2b1_golden() {
         // This test expects VerusHash v2b1.
         // Per C++ reference output for this input, v2b1 hash is same as v2 hash.
-        let actual_hash = verus_hash(TEST_96);
+        let actual_hash = verus_hash_v2(TEST_96); // Use V2 hash (which is V2.0)
         assert_eq!(
             actual_hash,
             VH2B1_LE,

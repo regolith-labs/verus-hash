@@ -111,7 +111,7 @@ pub fn process_instruction(
 
             // --- Log the hash calculated by the program ---
             // The `msg` slice is now the correct 64-byte buffer to hash
-            let hash_le = verus::verus_hash(msg); // Calculate hash (LE) of the 64-byte message
+            let hash_le = verus::verus_hash_v2(msg); // Calculate hash (LE) of the 64-byte message
             let mut hash_be = [0u8; 32];
             for i in 0..32 {
                 hash_be[i] = hash_le[31 - i]; // Convert to BE

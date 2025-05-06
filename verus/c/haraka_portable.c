@@ -218,6 +218,56 @@ void haraka256_port(uint8_t *out, const uint8_t *in)
     haraka256_perm_internal(out, in);
 }
 
+/*──────────────── Internal Haraka-512 permutation (Zero Key) ───*/
+// Identical to haraka512_perm_internal but uses zero constants.
+void haraka512_perm_zero(unsigned char *out, const unsigned char *in)
+{
+    // Allocate scratch buffers on the stack
+    uint8_t scr512[64]; // Used as 's' below
+    uint8_t scr16 [16]; // Used as 't' below
+    uint8_t *s=scr512,*t=scr16;
+    const uint8_t zero_rc[16] = {0}; // Zero round key
+
+    memcpy(s   ,in    ,16);  memcpy(s+16,in+16,16);
+    memcpy(s+32,in+32 ,16);  memcpy(s+48,in+48,16);
+
+    for (unsigned r=0;r<5;++r){
+        for (unsigned j=0;j<2;++j){
+            // Use the zero round constants
+            aesenc(s     , zero_rc);
+            aesenc(s+16  , zero_rc);
+            aesenc(s+32  , zero_rc);
+            aesenc(s+48  , zero_rc);
+        }
+        unpacklo32(t ,s   ,s+16);  unpackhi32(s   ,s   ,s+16);
+        unpacklo32(s+16,s+32,s+48); unpackhi32(s+32,s+32,s+48);
+        unpacklo32(s+48,s   ,s+32); unpackhi32(s   ,s   ,s+32);
+        unpackhi32(s+32,s+16,t  );  unpacklo32(s+16,s+16,t  );
+    }
+    memcpy(out,s,64);
+}
+
+/*──────────────── Public Haraka-512 Entry Point (Zero Key) ─────*/
+/* feed-forward + truncation */
+void haraka512_port_zero(unsigned char *out, const unsigned char *in)
+{
+    // Allocate local buffer on the stack
+    uint8_t buf[64];
+    // Call the internal zero-key permutation
+    haraka512_perm_zero(buf, in);
+
+    /* XOR the original message (feed-forward) */
+    for (unsigned i = 0; i < 64; ++i)
+        buf[i] ^= in[i];
+
+    /* Haraka-512 -> 256 bits:
+       take lanes starting at 8, 24, 40, 56 (spec-compliant) */
+    memcpy(out     , buf +  8, 8);
+    memcpy(out +  8, buf + 24, 8);
+    memcpy(out + 16, buf + 40, 8);
+    memcpy(out + 24, buf + 56, 8);
+}
+
 /*──────────────── Helper for build-time generation ────────────*/
 // Removed get_vrsc_constants function as it's no longer needed.
 // Generation happens via generate_constants.c run by build.rs.
