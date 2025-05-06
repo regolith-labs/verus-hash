@@ -20,29 +20,17 @@
 #ifndef INCLUDE_VERUS_CLHASH_H
 #define INCLUDE_VERUS_CLHASH_H
 
-
+#ifndef _WIN32
+#include <cpuid.h>
+#include <x86intrin.h>
+#else
+#include <intrin.h>
+#endif // !WIN32
 
 #include <stdlib.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <assert.h>
-
-#ifdef _WIN32
-#undef __cpuid
-#include <intrin.h>
-#endif
-
-#if defined(__arm__)  || defined(__aarch64__)
-#include "crypto/sse2neon.h"
-#include <sys/auxv.h>
-#include <asm/hwcap.h>
-#else
-#include <cpuid.h>
-#include <x86intrin.h>
-#endif // !WIN32
-
-#include <boost/thread.hpp>
-#include "tinyformat.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -60,8 +48,8 @@ enum {
     // power of 2 + Haraka sized key will not be used
     VERUSKEYSIZE=1024 * 8 + (40 * 16),
     SOLUTION_VERUSHHASH_V2 = 1,          // this must be in sync with CScript::SOLUTION_VERUSV2
-    SOLUTION_VERUSHHASH_V2_1 = 3,        // this must be in sync with CScript::ACTIVATE_VERUSHASH2_1
-    SOLUTION_VERUSHHASH_V2_2 = 4         // this must be in sync with CScript::ACTIVATE_VERUSHASH2_2
+    SOLUTION_VERUSHHASH_V2_1 = 3,         // this must be in sync with CScript::ACTIVATE_VERUSHASH2_1
+	SOLUTION_VERUSHHASH_V2_2 = 4 
 };
 
 struct verusclhash_descr
@@ -72,16 +60,12 @@ struct verusclhash_descr
 
 struct thread_specific_ptr {
     void *ptr;
-    thread_specific_ptr() { ptr = nullptr; }
-    void reset(void *newptr = nullptr)
+    thread_specific_ptr() { ptr = NULL; }
+    void reset(void *newptr = NULL)
     {
         if (ptr && ptr != newptr)
         {
-#if defined(_WIN32)
-            _aligned_free(ptr);
-#else
             std::free(ptr);
-#endif
         }
         ptr = newptr;
 
@@ -144,8 +128,8 @@ inline void ForceCPUVerusOptimized(bool trueorfalse)
 uint64_t verusclhash(void * random, const unsigned char buf[64], uint64_t keyMask, __m128i **pMoveScratch);
 uint64_t verusclhash_port(void * random, const unsigned char buf[64], uint64_t keyMask, __m128i **pMoveScratch);
 uint64_t verusclhash_sv2_1(void * random, const unsigned char buf[64], uint64_t keyMask, __m128i **pMoveScratch);
-uint64_t verusclhash_sv2_2(void * random, const unsigned char buf[64], uint64_t keyMask, __m128i **pMoveScratch);
 uint64_t verusclhash_sv2_1_port(void * random, const unsigned char buf[64], uint64_t keyMask, __m128i **pMoveScratch);
+uint64_t verusclhash_sv2_2(void * random, const unsigned char buf[64], uint64_t keyMask, __m128i **pMoveScratch);
 uint64_t verusclhash_sv2_2_port(void * random, const unsigned char buf[64], uint64_t keyMask, __m128i **pMoveScratch);
 void *alloc_aligned_buffer(uint64_t bufSize);
 
@@ -154,32 +138,6 @@ void *alloc_aligned_buffer(uint64_t bufSize);
 #endif
 
 #ifdef __cplusplus
-
-#include <vector>
-#include <string>
-#include <iostream>
-
-template <typename T>
-inline std::string LEToHex(const T &pt)
-{
-    std::stringstream ss;
-    for (int l = sizeof(T) - 1; l >= 0; l--)
-    {
-        ss << strprintf("%02x", *((unsigned char *)&pt + l));
-    }
-    return ss.str();
-}
-
-inline std::string HexBytes(const unsigned char *buf, int size)
-{
-    std::stringstream ss;
-    for (int l = 0; l < size; l++)
-    {
-        ss << strprintf("%02x", *(buf + l));
-    }
-    return ss.str();
-}
-
 // special high speed hasher for VerusHash 2.0
 struct verusclhasher {
     uint64_t keySizeInBytes;
@@ -200,6 +158,9 @@ struct verusclhasher {
     // align on 256 bit boundary at end
     verusclhasher(uint64_t keysize=VERUSKEYSIZE, int solutionVersion=SOLUTION_VERUSHHASH_V2) : keySizeInBytes((keysize >> 5) << 5)
     {
+#ifdef __APPLE__
+       __tls_init();
+#endif
         if (IsCPUVerusOptimized())
         {
             if (solutionVersion >= SOLUTION_VERUSHHASH_V2_1)
@@ -255,7 +216,7 @@ struct verusclhasher {
             (verusclhasher_key.reset((unsigned char *)alloc_aligned_buffer(keySizeInBytes << 1)), key = verusclhasher_key.get()))
         {
             verusclhash_descr *pdesc;
-            if (verusclhasher_descr.reset((unsigned char *)alloc_aligned_buffer(sizeof(verusclhash_descr))), pdesc = (verusclhash_descr *)verusclhasher_descr.get())
+            if (verusclhasher_descr.reset(new verusclhash_descr()), pdesc = (verusclhash_descr *)verusclhasher_descr.get())
             {
                 pdesc->keySizeInBytes = keySizeInBytes;
             }
