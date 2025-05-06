@@ -15,10 +15,47 @@ extern crate alloc;
 mod rust_impl;
 
 // Re-export the pure Rust verus_hash function.
-pub use rust_impl::verus_hash_rust as verus_hash;
+// Note: The signature now requires a key buffer.
+// pub use rust_impl::verus_hash_rust as verus_hash;
+// Let's define a wrapper or make the caller handle the buffer.
+// For now, keep the old signature for verify_hash compatibility,
+// but it will use a temporary buffer internally (less efficient).
 
-// The haraka_rc function is no longer needed as constants are internal to haraka-bpf.
-// pub use backend::haraka_rc; // Remove this line
+// Define the key size constant publicly if needed by callers
+pub use rust_impl::VERUSKEYSIZE;
+
+// Internal function requiring the buffer
+use rust_impl::verus_hash_rust as verus_hash_internal;
+
+// Public function that allocates a temporary buffer (for compatibility/ease of use)
+// WARNING: This allocates VERUSKEYSIZE bytes on the stack/heap per call!
+// Consider requiring the caller to provide a buffer for performance.
+#[cfg(not(target_arch = "bpf"))] // Avoid large stack allocation on BPF
+pub fn verus_hash(data: &[u8]) -> [u8; 32] {
+    // Use alloc for the buffer if available (e.g., std environment)
+    #[cfg(feature = "alloc")]
+    let mut key_buffer_vec = alloc::vec![0u8; VERUSKEYSIZE];
+    #[cfg(not(feature = "alloc"))]
+    // Fallback to stack allocation if no allocator (might fail if VERUSKEYSIZE is too large)
+    // This is problematic for no_std without alloc. A heapless allocator or static buffer might be needed.
+    // For now, let's assume 'alloc' is available when not on BPF.
+    panic!("verus_hash requires the 'alloc' feature or a pre-allocated buffer in no_std environments without default allocators.");
+
+    #[cfg(feature = "alloc")]
+    {
+        verus_hash_internal(data, key_buffer_vec.as_mut_slice())
+    }
+}
+
+// BPF version MUST receive a buffer from the caller via Solana memory mapping.
+// We cannot allocate it here. This function signature needs adjustment
+// in the context of the Solana program using it.
+// For now, let's provide a function that takes the buffer.
+pub fn verus_hash_with_buffer(data: &[u8], key_buffer: &mut [u8]) -> [u8; 32] {
+    verus_hash_internal(data, key_buffer)
+}
+
+// The haraka_rc function is no longer needed.
 
 // Define a simple panic handler for no_std environments (required by BPF)
 #[cfg(target_arch = "bpf")]
@@ -39,10 +76,48 @@ fn alloc_error(_layout: core::alloc::Layout) -> ! {
 
 /// Return `true` if `verus_hash(data)` ≤ `target_be` (both big-endian).
 /// *Avoids BigUint and extra Vec allocations for Solana BPF compatibility.*
-/// This function now unconditionally uses the pure Rust `verus_hash` function.
+/// This function now uses the software Rust `verus_hash` implementation.
+/// NOTE: This version allocates a temporary key buffer. For BPF or performance-
+/// critical paths, use `verify_hash_with_buffer`.
+#[cfg(not(target_arch = "bpf"))] // Avoid large stack allocation on BPF
 pub fn verify_hash(data: &[u8], target_be: &[u8; 32]) -> bool {
-    // Compute the hash (Little-Endian) using the pure Rust implementation
-    let le = verus_hash(data);
+    // Allocate temporary buffer for the key
+    #[cfg(feature = "alloc")]
+    let mut key_buffer_vec = alloc::vec![0u8; VERUSKEYSIZE];
+    #[cfg(not(feature = "alloc"))]
+    panic!("verify_hash requires the 'alloc' feature or a pre-allocated buffer in no_std environments without default allocators.");
+
+    #[cfg(feature = "alloc")]
+    {
+        // Compute the hash (Little-Endian) using the internal function with the buffer
+        let le = verus_hash_internal(data, key_buffer_vec.as_mut_slice());
+
+        // Reverse in place into a stack-allocated buffer to get big-endian hash
+        let mut hash_be = [0u8; 32];
+        for i in 0..32 {
+            hash_be[i] = le[31 - i];
+        }
+
+        // Constant-time lexicographic compare (hash_be <= target_be)
+        // Returns true if hash_be is less than or equal to target_be.
+        for i in 0..32 {
+            if hash_be[i] < target_be[i] {
+                return true; // Current byte is smaller
+            } else if hash_be[i] > target_be[i] {
+                return false; // Current byte is larger
+            }
+            // Bytes are equal, continue
+        }
+        true // All bytes were equal
+    }
+}
+
+/// Return `true` if `verus_hash(data)` ≤ `target_be` (both big-endian).
+/// Requires the caller to provide a mutable key buffer of VERUSKEYSIZE.
+/// Suitable for BPF and performance-critical paths.
+pub fn verify_hash_with_buffer(data: &[u8], target_be: &[u8; 32], key_buffer: &mut [u8]) -> bool {
+    // Compute the hash (Little-Endian) using the internal function with the provided buffer
+    let le = verus_hash_internal(data, key_buffer);
 
     // Reverse in place into a stack-allocated buffer to get big-endian hash
     let mut hash_be = [0u8; 32];
@@ -76,29 +151,46 @@ mod tests {
     use hex::FromHex;
     use hex_literal::hex; // Use hex_literal for const arrays
 
+    // Helper for tests: allocate key buffer
+    fn get_test_buffer() -> Vec<u8> {
+        vec![0u8; VERUSKEYSIZE]
+    }
+
     #[test]
     fn length_is_32() {
-        // Uses pure Rust verus_hash
-        assert_eq!(verus_hash(b"").len(), 32);
+        let mut buffer = get_test_buffer();
+        // Uses pure Rust verus_hash_with_buffer
+        assert_eq!(verus_hash_with_buffer(b"", &mut buffer).len(), 32);
     }
 
     #[test]
     fn verify_max_target() {
-        // Uses pure Rust verus_hash
-        assert!(verify_hash(b"anything", &[0xFF; 32]));
+        let mut buffer = get_test_buffer();
+        // Uses pure Rust verify_hash_with_buffer
+        assert!(verify_hash_with_buffer(
+            b"anything",
+            &[0xFF; 32],
+            &mut buffer
+        ));
     }
 
     #[test]
     fn verify_zero_target_fails() {
-        // Uses pure Rust verus_hash
+        let mut buffer = get_test_buffer();
+        // Uses pure Rust verify_hash_with_buffer
         // Hash of "anything" will be > 0, so should fail against zero target
-        assert!(!verify_hash(b"anything", &[0u8; 32]));
+        assert!(!verify_hash_with_buffer(
+            b"anything",
+            &[0u8; 32],
+            &mut buffer
+        ));
     }
 
     #[test]
     fn verify_known_vector_success() {
+        let mut buffer = get_test_buffer();
         // Verify that the known hash of "abc" meets a target slightly above it.
-        let hash_le = verus_hash(b"abc");
+        let hash_le = verus_hash_with_buffer(b"abc", &mut buffer);
         let mut hash_be = [0u8; 32];
         for i in 0..32 {
             hash_be[i] = hash_le[31 - i];
@@ -115,13 +207,16 @@ mod tests {
                 target_be[i] = 0; // Handle carry
             }
         }
-        assert!(verify_hash(b"abc", &target_be));
+        // Re-init buffer for verify call
+        let mut buffer2 = get_test_buffer();
+        assert!(verify_hash_with_buffer(b"abc", &target_be, &mut buffer2));
     }
 
     #[test]
     fn verify_known_vector_fail() {
+        let mut buffer = get_test_buffer();
         // Verify that the known hash of "abc" fails a target slightly below it.
-        let hash_le = verus_hash(b"abc");
+        let hash_le = verus_hash_with_buffer(b"abc", &mut buffer);
         let mut hash_be = [0u8; 32];
         for i in 0..32 {
             hash_be[i] = hash_le[31 - i];
@@ -140,21 +235,24 @@ mod tests {
         }
         // Ensure target is not exactly the hash (can happen if hash is 0)
         if target_be != hash_be {
-            assert!(!verify_hash(b"abc", &target_be));
+            // Re-init buffer for verify call
+            let mut buffer2 = get_test_buffer();
+            assert!(!verify_hash_with_buffer(b"abc", &target_be, &mut buffer2));
         } else {
             // If hash was 0, the only lower target is impossible. Skip assert.
-            std::println!("Skipping verify_known_vector_fail as hash is zero.");
+            println!("Skipping verify_known_vector_fail as hash is zero.");
         }
     }
 
     #[test]
     fn known_vector_test1234_96_v2_2() {
+        let mut buffer = get_test_buffer();
         let input = b"Test1234Test1234Test1234Test1234\
                       Test1234Test1234Test1234Test1234\
                       Test1234Test1234Test1234Test1234";
-        // Updated expected output hash (Little-Endian)
+        // Updated expected output hash (Little-Endian) for VerusHash 2.2
         let expected_le = hex!("ed3dbd1d798342264cbfee4a49564917edb68b3a5c566d1f487005113bc4ce55");
-        assert_eq!(verus_hash(input), expected_le);
+        assert_eq!(verus_hash_with_buffer(input, &mut buffer), expected_le);
     }
 
     // Add more known vectors here if needed.

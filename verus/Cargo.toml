@@ -17,6 +17,12 @@ bytemuck = { version = "1.16", features = [
   "extern_crate_alloc",
 ] } # Needed for safe casting/transmuting
 
+# Optional dependency on alloc for no_std environments that support it
+alloc = { version = "1.0", package = "alloc", optional = true }
+
+[features]
+default = ["std"]
+std = ["alloc"]   # Enable alloc when std feature is enabled
 
 [dev-dependencies]
 hex = "0.4"
