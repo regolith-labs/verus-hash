@@ -17,9 +17,9 @@ mod backend {
         // void verus_hash_v2(void *result, const void *data, size_t len)
         // or similar, resulting in a 32-byte hash.
         // Note: The exact name might differ (e.g., verus_hash_32); adjust if needed based on build.sh/C code.
-        // void verus_hash_v2(void *result, const void *data, size_t len)
-        // or similar, resulting in a 32-byte hash.
-        fn verus_hash_v2(out_ptr: *mut u8, in_ptr: *const u8, len: usize);
+        // void verus_hash_v2_2(void *result, const void *data, size_t len)
+        // or similar, resulting in a 32-byte hash. This corresponds to VerusHash v2.2.
+        fn verus_hash_v2_2(out_ptr: *mut u8, in_ptr: *const u8, len: usize);
 
         // FFI declaration for the VerusHash V1 function from the C library.
         // Name in C is `verus_hash`.
@@ -40,9 +40,9 @@ mod backend {
     pub fn verus_hash_v2_impl(data: &[u8]) -> [u8; 32] {
         // Constants are baked in, no runtime initialization required.
         let mut out = [0u8; 32];
-        // Call the FFI function for V2. It's unsafe because it involves FFI.
+        // Call the FFI function for V2.2. It's unsafe because it involves FFI.
         // Safety relies on the C implementation being correct.
-        unsafe { verus_hash_v2(out.as_mut_ptr(), data.as_ptr(), data.len()) };
+        unsafe { verus_hash_v2_2(out.as_mut_ptr(), data.as_ptr(), data.len()) };
         out
     }
 

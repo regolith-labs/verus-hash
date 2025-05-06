@@ -60,8 +60,8 @@ void verus_hash(unsigned char *result, const unsigned char *data, size_t len)
 
 
 /* ---- Full VerusHash 2.2 Implementation ---- */
-
-void verus_hash_v2(unsigned char *out, const unsigned char *in, size_t len)
+// Renamed from verus_hash_v2 to avoid conflict with V2.0 needed for tests/FFI
+void verus_hash_v2_2(unsigned char *out, const unsigned char *in, size_t len)
 {
     /* ------------- Sponge over Haraka-512 ------------- */
     uint8_t S[64] = {0}, tmp[64]; // Initialize state S to zeros
