@@ -236,9 +236,10 @@ mod tests {
         let input = b"Test1234Test1234Test1234Test1234\
                       Test1234Test1234Test1234Test1234\
                       Test1234Test1234Test1234Test1234";
-        // Updated expected output hash (Little-Endian) for VerusHash 2.2
-        let expected_le = hex!("ed3dbd1d798342264cbfee4a49564917edb68b3a5c566d1f487005113bc4ce55");
-        assert_eq!(verus_hash_with_buffer(input, &mut buffer), expected_le);
+        // Expected output hash (Big-Endian) for VerusHash 2.2
+        // This is the direct output from the C++ reference `verus-cli`
+        let expected_be = hex!("ed3dbd1d798342264cbfee4a49564917edb68b3a5c566d1f487005113bc4ce55");
+        assert_eq!(verus_hash_with_buffer(input, &mut buffer), expected_be);
     }
 
     // Add more known vectors here if needed.

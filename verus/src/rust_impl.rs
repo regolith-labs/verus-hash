@@ -846,13 +846,7 @@ pub fn verus_hash_rust(data: &[u8], key_buffer: &mut [u8]) -> [u8; 32] {
     // Apply the keyed Haraka-512 using the prepared state and selected constants.
     let final_hash_be = haraka512_keyed_rust(&state.bytes, final_constants); // Output is BE
 
-    // --- Endianness Correction ---
-    // VerusHash test vectors expect the final output in Little-Endian format.
-    // Reverse the Big-Endian output from haraka512_keyed_rust.
-    let mut final_hash_le = [0u8; 32];
-    for j in 0..32 {
-        final_hash_le[j] = final_hash_be[31 - j];
-    }
-
-    final_hash_le
+    // The final hash from haraka512_keyed_rust is Big-Endian.
+    // This is the expected output format for VerusHash 2.2.
+    final_hash_be
 }
