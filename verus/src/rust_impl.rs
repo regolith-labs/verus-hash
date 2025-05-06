@@ -1,17 +1,16 @@
 //! Pure Rust implementation of VerusHash 2.2 algorithm, based on the C++ reference.
-//! Uses the `haraka-bpf` crate for Haraka512 operations.
+//! Uses software implementations for AES and Haraka512.
 
-use bytemuck::{cast, cast_slice, Pod, Zeroable};
-use core::convert::TryInto; // Needed for slice conversions // Added cast, cast_slice
-                                                            // Remove haraka-bpf import as we implement Haraka in software now
-                                                            // use haraka_bpf::haraka512;
+use bytemuck::{cast_slice, Pod, Zeroable}; // Removed unused `cast`
+use core::convert::TryInto; // Needed for slice conversions
 
 // Constants from verus_clhash.h, used in the CLHASH mixing step.
 const CLHASH_K1: u64 = 0x9e3779b185ebca87;
 const CLHASH_K2: u64 = 0xc2b2ae3d27d4eb4f;
 
 // --- VerusHash V2 Key Constants ---
-const VERUSKEYSIZE: usize = 8192 + (40 * 16); // 8832 bytes (8KiB + Haraka constants)
+// Made public for use in lib.rs
+pub const VERUSKEYSIZE: usize = 8192 + (40 * 16); // 8832 bytes (8KiB + Haraka constants)
 const VERUSKEYMASK: u64 = (1 << 13) - 1; // 8191 (Byte mask for 8KiB)
 
 // --- AES S-box ---
@@ -523,10 +522,10 @@ fn haraka256_keyed_rust(input: &[u8; 32], round_constants: &[[u8; 16]; 20]) -> [
     output
 }
 
-// --- Software Haraka512 Keyed ---
-// Takes 64 byte input, 10 * 16 byte round constants slice. Outputs 32 bytes BE.
-// Note: The round_constants slice must contain exactly 10 constants for the 5 rounds.
-fn haraka512_keyed_rust(input: &[u8; 64], round_constants: &[[u8; 16]; 10]) -> [u8; 32] {
+// --- Software Haraka512 Permutation (Unkeyed) ---
+// Takes 64 byte input, uses global round constants. Outputs 64 bytes.
+// Based on haraka512_perm from haraka_portable.c
+fn haraka512_perm_rust(input: &[u8; 64]) -> [u8; 64] {
     // Load input into state (4x16 bytes)
     let mut state: [[u8; 16]; 4] = [
         input[0..16].try_into().unwrap(),
@@ -535,46 +534,111 @@ fn haraka512_keyed_rust(input: &[u8; 64], round_constants: &[[u8; 16]; 10]) -> [
         input[48..64].try_into().unwrap(),
     ];
 
+    // Use the full 40 global constants
+    let constants_512: &[[u8; 16]; 40] = &HARAKA_ROUND_CONSTANTS_U8;
+
     // 5 Rounds
     for r in 0..5 {
-        // AES Rounds (2 per Haraka round, using 4 constants each)
-        // Corresponds to the two inner loops (j=0, j=1) in haraka_portable.c's haraka512_perm_keyed
+        // AES Rounds (2 per Haraka round, using 8 constants each round)
         // Sub-round 0 uses constants at indices 8*r + 0..3
-        aes_round(&mut state[0], &round_constants[r * 2 + 0]); // Uses rc[8*r + 0]
-        aes_round(&mut state[1], &round_constants[r * 2 + 1]); // Uses rc[8*r + 1]
-        aes_round(&mut state[2], &round_constants[r * 2 + 2]); // Uses rc[8*r + 2]
-        aes_round(&mut state[3], &round_constants[r * 2 + 3]); // Uses rc[8*r + 3]
+        aes_round(&mut state[0], &constants_512[r * 8 + 0]);
+        aes_round(&mut state[1], &constants_512[r * 8 + 1]);
+        aes_round(&mut state[2], &constants_512[r * 8 + 2]);
+        aes_round(&mut state[3], &constants_512[r * 8 + 3]);
 
         // Sub-round 1 uses constants at indices 8*r + 4..7
-        aes_round(&mut state[0], &round_constants[r * 2 + 4]); // Uses rc[8*r + 4]
-        aes_round(&mut state[1], &round_constants[r * 2 + 5]); // Uses rc[8*r + 5]
-        aes_round(&mut state[2], &round_constants[r * 2 + 6]); // Uses rc[8*r + 6]
-        aes_round(&mut state[3], &round_constants[r * 2 + 7]); // Uses rc[8*r + 7]
+        aes_round(&mut state[0], &constants_512[r * 8 + 4]);
+        aes_round(&mut state[1], &constants_512[r * 8 + 5]);
+        aes_round(&mut state[2], &constants_512[r * 8 + 6]);
+        aes_round(&mut state[3], &constants_512[r * 8 + 7]);
+
+        // Mixing
+        mix4_portable(&mut state);
+    }
+
+    // Combine result (full 64 bytes)
+    let mut output = [0u8; 64];
+    output[0..16].copy_from_slice(&state[0]);
+    output[16..32].copy_from_slice(&state[1]);
+    output[32..48].copy_from_slice(&state[2]);
+    output[48..64].copy_from_slice(&state[3]);
+    output
+}
+
+// --- Software Haraka512 (Unkeyed, Truncated Output) ---
+// Takes 64 byte input, uses global round constants. Outputs 32 bytes BE.
+// Based on haraka512_port from haraka_portable.c
+fn haraka512_rust(input: &[u8; 64]) -> [u8; 32] {
+    // Apply the permutation
+    let perm_output = haraka512_perm_rust(input);
+
+    // Feed-forward XOR
+    let mut buf = [0u8; 64];
+    for i in 0..64 {
+        buf[i] = perm_output[i] ^ input[i];
+    }
+
+    // Truncation (matches TRUNCSTORE macro in haraka.h) -> Big Endian result
+    let mut output = [0u8; 32];
+    output[0..8].copy_from_slice(&buf[8..16]); // High 64 bits of s0
+    output[8..16].copy_from_slice(&buf[24..32]); // High 64 bits of s1
+    output[16..24].copy_from_slice(&buf[32..40]); // Low 64 bits of s2
+    output[24..32].copy_from_slice(&buf[48..56]); // Low 64 bits of s3
+
+    output
+}
+
+// --- Software Haraka512 Keyed ---
+// Takes 64 byte input, 10 * 16 byte round constants slice. Outputs 32 bytes BE.
+// Note: The round_constants slice must contain exactly 10 constants for the 5 rounds.
+// Note: The C++ code uses 40 constants for the keyed version too, selected by offset.
+// This function needs adjustment or replacement if it's meant to match haraka512_keyed.
+// Let's redefine it to match haraka512_port_keyed logic.
+fn haraka512_keyed_rust(input: &[u8; 64], round_constants: &[[u8; 16]; 40]) -> [u8; 32] {
+    // Load input into state (4x16 bytes)
+    let mut state: [[u8; 16]; 4] = [
+        input[0..16].try_into().unwrap(),
+        input[16..32].try_into().unwrap(),
+        input[32..48].try_into().unwrap(),
+        input[48..64].try_into().unwrap(),
+    ];
+
+    // 5 Rounds using the provided (potentially offset) constants
+    for r in 0..5 {
+        // AES Rounds (2 per Haraka round, using 8 constants each round)
+        // Sub-round 0 uses constants at indices 8*r + 0..3
+        aes_round(&mut state[0], &round_constants[r * 8 + 0]);
+        aes_round(&mut state[1], &round_constants[r * 8 + 1]);
+        aes_round(&mut state[2], &round_constants[r * 8 + 2]);
+        aes_round(&mut state[3], &round_constants[r * 8 + 3]);
+
+        // Sub-round 1 uses constants at indices 8*r + 4..7
+        aes_round(&mut state[0], &round_constants[r * 8 + 4]);
+        aes_round(&mut state[1], &round_constants[r * 8 + 5]);
+        aes_round(&mut state[2], &round_constants[r * 8 + 6]);
+        aes_round(&mut state[3], &round_constants[r * 8 + 7]);
 
         // Mixing
         mix4_portable(&mut state);
     }
 
     // Feed-forward XOR
-    for i in 0..16 {
-        state[0][i] ^= input[i];
-    }
-    for i in 0..16 {
-        state[1][i] ^= input[i + 16];
-    }
-    for i in 0..16 {
-        state[2][i] ^= input[i + 32];
-    }
-    for i in 0..16 {
-        state[3][i] ^= input[i + 48];
+    let mut buf = [0u8; 64]; // Use intermediate buffer for XOR result
+    buf[0..16].copy_from_slice(&state[0]);
+    buf[16..32].copy_from_slice(&state[1]);
+    buf[32..48].copy_from_slice(&state[2]);
+    buf[48..64].copy_from_slice(&state[3]);
+
+    for i in 0..64 {
+        buf[i] ^= input[i];
     }
 
     // Truncation (matches TRUNCSTORE macro in haraka.h) -> Big Endian result
     let mut output = [0u8; 32];
-    output[0..8].copy_from_slice(&state[0][8..16]); // High 64 bits of s0
-    output[8..16].copy_from_slice(&state[1][8..16]); // High 64 bits of s1
-    output[16..24].copy_from_slice(&state[2][0..8]); // Low 64 bits of s2
-    output[24..32].copy_from_slice(&state[3][0..8]); // Low 64 bits of s3
+    output[0..8].copy_from_slice(&buf[8..16]); // High 64 bits of s0
+    output[8..16].copy_from_slice(&buf[24..32]); // High 64 bits of s1
+    output[16..24].copy_from_slice(&buf[32..40]); // Low 64 bits of s2
+    output[24..32].copy_from_slice(&buf[48..56]); // Low 64 bits of s3
 
     output
 }
@@ -613,30 +677,7 @@ fn gen_new_cl_key_rust(seed_bytes: &[u8; 32], key_buffer: &mut [u8]) {
     // The caller managing the buffer would need to handle refresh copies if needed.
 }
 
-// Helper to get the 10 round constants for the final keyed Haraka512.
-// The offset is calculated based on the intermediate CLHASH mix value.
-#[inline(always)]
-fn get_final_keyed_constants<'a>(key_buffer: &'a [u8], intermediate: u64) -> &'a [[u8; 16]; 10] {
-    // Offset calculation: intermediate & (keyMask >> 4)
-    // keyMask is byte mask (8191), >> 4 converts to u128 mask (511).
-    let offset128 = (intermediate & (VERUSKEYMASK >> 4)) as usize;
-    let start_byte = offset128 * 16;
-    let end_byte = start_byte + 10 * 16; // 10 constants needed for 5 rounds (80 bytes total)
-
-    // Ensure the slice read is within the bounds of the main key portion (VERUSKEYSIZE bytes)
-    assert!(
-        end_byte <= VERUSKEYSIZE,
-        "Key buffer offset calculation out of bounds"
-    );
-
-    // Cast the slice of the key buffer to a slice of [u8; 16] arrays
-    let constants_slice: &'a [[u8; 16]] = cast_slice(&key_buffer[start_byte..end_byte]);
-
-    // Try to convert the slice into a reference to an array of 10 constants
-    constants_slice
-        .try_into()
-        .expect("Slice length mismatch for round constants")
-}
+// Removed get_final_keyed_constants as its logic is now inline within verus_hash_rust
 
 /// Represents the 64-byte state used in VerusHash.
 /// Derives Pod and Zeroable for safe zero-initialization and byte manipulation.
@@ -667,12 +708,17 @@ impl VerusState {
     }
 }
 
-/// Computes the VerusHash 2.2 of the input data.
+/// Computes the VerusHash 2.2 of the input data using the provided key buffer.
 /// Follows the logic from CVerusHashV2::Finalize2b in the C++ reference.
-pub fn verus_hash_rust(data: &[u8]) -> [u8; 32] {
+pub fn verus_hash_rust(data: &[u8], key_buffer: &mut [u8]) -> [u8; 32] {
+    assert!(
+        key_buffer.len() >= VERUSKEYSIZE,
+        "Key buffer too small for VerusHash"
+    );
+
     // State buffer (64 bytes). First 32 bytes hold the previous Haraka output (or zeros initially).
     // Second 32 bytes are XORed with the input block.
-    let mut state = VerusState::default();
+    let mut state = VerusState::default(); // Initial state is zeroed
     let len = data.len();
     let mut i = 0;
 
@@ -684,16 +730,11 @@ pub fn verus_hash_rust(data: &[u8]) -> [u8; 32] {
             state.bytes[32 + j] ^= data[i + j];
         }
 
-        // Apply Haraka-512 using the haraka-bpf crate.
-        // haraka512::<5> specifies 5 rounds, matching the C++ reference.
-        // It takes 64 bytes input and produces 32 bytes output (BE).
-        let mut haraka_out_be = [0u8; 32];
-        haraka512::<5>(&mut haraka_out_be, &state.bytes);
+        // Apply unkeyed Haraka-512 (software version)
+        // Takes 64 bytes input, produces 32 bytes output (BE).
+        let haraka_out_be = haraka512_rust(&state.bytes);
 
         // Overwrite the first half of the state with the Haraka output.
-        // The C++ reference seems to work with LE state internally,
-        // but haraka512 output is BE. Let's store it as is for now
-        // and handle endianness during CLHASH.
         state.bytes[0..32].copy_from_slice(&haraka_out_be);
 
         // Clear the second half (where the input was XORed) for the next round.
@@ -709,15 +750,13 @@ pub fn verus_hash_rust(data: &[u8]) -> [u8; 32] {
         for j in 0..remaining {
             state.bytes[32 + j] ^= data[i + j];
         }
-        // Zero-pad the rest of the second half (already done by fill(0) above,
-        // but this ensures correctness if state wasn't cleared).
+        // Zero-pad the rest of the second half
         for j in remaining..32 {
-            state.bytes[32 + j] = 0;
+            state.bytes[32 + j] = 0; // Ensure padding is zero
         }
 
-        // Apply final Haraka-512
-        let mut haraka_out_be = [0u8; 32];
-        haraka512::<5>(&mut haraka_out_be, &state.bytes);
+        // Apply final unkeyed Haraka-512 for the sponge phase
+        let haraka_out_be = haraka512_rust(&state.bytes);
 
         // Overwrite the first half of the state with the final Haraka output.
         state.bytes[0..32].copy_from_slice(&haraka_out_be);
@@ -728,26 +767,22 @@ pub fn verus_hash_rust(data: &[u8]) -> [u8; 32] {
     // (Haraka output in first 32 bytes, zeros in second 32 bytes).
 
     // --- CLHASH Mix Phase ---
-    // This part deviates significantly in the C++ reference (verusclhash function)
-    // using complex, state-mutating loops with intrinsics (AES, PCLMUL, etc.).
-    // Replicating that exactly in pure Rust without intrinsics is infeasible/slow.
-    // We follow the *spirit* by performing a CLHASH mix based on the post-sponge
-    // state and the *original* input data, similar to the existing Rust approach
-    // but ensuring inputs match the C++ reference's intent for this stage.
-
+    // Calculate the 64-bit intermediate value 'mix' based on the post-sponge state
+    // and the first 64 bytes of the original input data.
     let mut mix: u64 = 0;
     let mut clhash_input_block = [0u8; 64]; // Buffer for the first 64 bytes of input
     let cpy_len = len.min(64);
     clhash_input_block[..cpy_len].copy_from_slice(&data[..cpy_len]); // Copy up to 64 bytes
 
-    // Get state lanes as LE u64. Note: state.bytes[0..32] contains BE Haraka output.
-    // We need LE for CLHASH calculations as per C++ reference (ReadLE64).
+    // Get state lanes as LE u64.
     let state_u64_le = state.as_u64_le(); // Reads state bytes as LE u64s
 
     // Get input lanes as LE u64.
-    let clhash_input_u64_le: [u64; 8] = bytemuck::cast(clhash_input_block); // Reads input bytes as LE u64s
+    // Use bytemuck::cast for safe casting
+    let clhash_input_u64_le: [u64; 8] = bytemuck::cast(clhash_input_block);
 
     for lane in 0..8 {
+        // Ensure values are treated as Little Endian for calculation
         let m = u64::from_le(clhash_input_u64_le[lane]); // Input lane (from original data, LE)
         let s_lane = u64::from_le(state_u64_le[lane]); // State lane (post-sponge, LE)
         let p = if (lane & 1) != 0 {
@@ -760,26 +795,60 @@ pub fn verus_hash_rust(data: &[u8]) -> [u8; 32] {
     // 'mix' now holds the 64-bit intermediate value, calculated using LE inputs.
 
     // --- Final State Preparation ---
-    // The first half of 'state' still contains the Big Endian post-sponge Haraka result.
-    // The C++ reference prepares the buffer for a *keyed* Haraka, placing the
+    // The first half of 'state' contains the Big Endian post-sponge Haraka result.
+    // Prepare the buffer for the *keyed* Haraka by placing the
     // LE 'mix' value into the second half.
     state.bytes[32..40].copy_from_slice(&mix.to_le_bytes());
     // Zero out the remaining bytes in the second half.
     state.bytes[40..64].fill(0);
 
-    // --- Final Haraka-512 ---
-    // The C++ reference uses a *keyed* Haraka512 here (haraka512KeyedFunction).
-    // The key is derived from the post-sponge state (which is stored BE in state.bytes[0..32])
-    // offset by an index derived from 'mix'.
-    // Since haraka-bpf doesn't provide a keyed version directly, we continue
-    // to approximate using the standard *unkeyed* haraka512 on the prepared state.
-    // This is a known difference from the C++ reference implementation.
-    let mut final_hash_be = [0u8; 32]; // Haraka512 output is BE
-    haraka512::<5>(&mut final_hash_be, &state.bytes); // Apply unkeyed Haraka to the prepared state
+    // --- Key Generation ---
+    // Generate the VerusHash key into the provided buffer using the post-sponge state as seed.
+    // The seed (state.bytes[0..32]) is expected to be Big Endian from haraka512_rust.
+    // gen_new_cl_key_rust expects a [u8; 32] seed.
+    let seed_bytes: [u8; 32] = state.bytes[0..32]
+        .try_into()
+        .expect("Sponge output slice has wrong size");
+    gen_new_cl_key_rust(&seed_bytes, key_buffer);
+
+    // --- Final Haraka-512 (Keyed) ---
+    // Get the specific round constants based on the 'mix' value and the generated key.
+    // The C++ uses haraka512KeyedFunction which takes the full key buffer and calculates offset internally.
+    // Our get_final_keyed_constants simulates this offset calculation.
+    // However, haraka512_keyed_rust expects the *full* 40 constants.
+    // We need to adjust get_final_keyed_constants or haraka512_keyed_rust.
+    // Let's adjust get_final_keyed_constants to return the correct slice view into the main key buffer.
+
+    // Calculate the starting byte offset for the 40 round constants needed for haraka512_keyed_rust
+    // The C++ haraka512_keyed uses an offset based on 'intermediate' (our 'mix')
+    // to select *which* 40 constants out of the larger key buffer to use.
+    // Offset calculation: intermediate & (keyMask >> 4)
+    // keyMask is byte mask (8191), >> 4 converts to u128 mask (511).
+    let offset128 = (mix & (VERUSKEYMASK >> 4)) as usize;
+    let start_byte = offset128 * 16; // Each constant is 16 bytes
+    let constants_slice_len = 40 * 16; // Need 40 constants for 5 rounds (8 per round)
+    let end_byte = start_byte + constants_slice_len;
+
+    // Ensure the slice read is within the bounds of the main key portion (VERUSKEYSIZE bytes)
+    assert!(
+        end_byte <= VERUSKEYSIZE,
+        "Key buffer offset calculation out of bounds for keyed Haraka constants"
+    );
+
+    // Get a slice representing the 40 round constants from the key buffer
+    let final_constants_slice: &[[u8; 16]] = cast_slice(&key_buffer[start_byte..end_byte]);
+
+    // Try to convert the slice into a reference to an array of 40 constants
+    let final_constants: &[[u8; 16]; 40] = final_constants_slice
+        .try_into()
+        .expect("Slice length mismatch for final round constants");
+
+    // Apply the keyed Haraka-512 using the prepared state and selected constants.
+    let final_hash_be = haraka512_keyed_rust(&state.bytes, final_constants); // Output is BE
 
     // --- Endianness Correction ---
     // VerusHash test vectors expect the final output in Little-Endian format.
-    // Since haraka512 produces Big-Endian, we reverse the bytes.
+    // Reverse the Big-Endian output from haraka512_keyed_rust.
     let mut final_hash_le = [0u8; 32];
     for j in 0..32 {
         final_hash_le[j] = final_hash_be[31 - j];

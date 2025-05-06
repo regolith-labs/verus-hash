@@ -28,23 +28,14 @@ pub use rust_impl::VERUSKEYSIZE;
 use rust_impl::verus_hash_rust as verus_hash_internal;
 
 // Public function that allocates a temporary buffer (for compatibility/ease of use)
-// WARNING: This allocates VERUSKEYSIZE bytes on the stack/heap per call!
-// Consider requiring the caller to provide a buffer for performance.
-#[cfg(not(target_arch = "bpf"))] // Avoid large stack allocation on BPF
+// WARNING: This allocates VERUSKEYSIZE bytes on the heap per call!
+// Only available when the `std` feature is enabled.
+#[cfg(feature = "std")]
 pub fn verus_hash(data: &[u8]) -> [u8; 32] {
-    // Use alloc for the buffer if available (e.g., std environment)
-    #[cfg(feature = "alloc")]
-    let mut key_buffer_vec = alloc::vec![0u8; VERUSKEYSIZE];
-    #[cfg(not(feature = "alloc"))]
-    // Fallback to stack allocation if no allocator (might fail if VERUSKEYSIZE is too large)
-    // This is problematic for no_std without alloc. A heapless allocator or static buffer might be needed.
-    // For now, let's assume 'alloc' is available when not on BPF.
-    panic!("verus_hash requires the 'alloc' feature or a pre-allocated buffer in no_std environments without default allocators.");
+    // Use alloc (available via std) for the buffer
+    let mut key_buffer_vec = std::vec![0u8; VERUSKEYSIZE];
 
-    #[cfg(feature = "alloc")]
-    {
-        verus_hash_internal(data, key_buffer_vec.as_mut_slice())
-    }
+    verus_hash_internal(data, key_buffer_vec.as_mut_slice())
 }
 
 // BPF version MUST receive a buffer from the caller via Solana memory mapping.
@@ -79,37 +70,32 @@ fn alloc_error(_layout: core::alloc::Layout) -> ! {
 /// This function now uses the software Rust `verus_hash` implementation.
 /// NOTE: This version allocates a temporary key buffer. For BPF or performance-
 /// critical paths, use `verify_hash_with_buffer`.
-#[cfg(not(target_arch = "bpf"))] // Avoid large stack allocation on BPF
+/// Only available when the `std` feature is enabled.
+#[cfg(feature = "std")]
 pub fn verify_hash(data: &[u8], target_be: &[u8; 32]) -> bool {
-    // Allocate temporary buffer for the key
-    #[cfg(feature = "alloc")]
-    let mut key_buffer_vec = alloc::vec![0u8; VERUSKEYSIZE];
-    #[cfg(not(feature = "alloc"))]
-    panic!("verify_hash requires the 'alloc' feature or a pre-allocated buffer in no_std environments without default allocators.");
+    // Allocate temporary buffer for the key using std's allocator
+    let mut key_buffer_vec = std::vec![0u8; VERUSKEYSIZE];
 
-    #[cfg(feature = "alloc")]
-    {
-        // Compute the hash (Little-Endian) using the internal function with the buffer
-        let le = verus_hash_internal(data, key_buffer_vec.as_mut_slice());
+    // Compute the hash (Little-Endian) using the internal function with the buffer
+    let le = verus_hash_internal(data, key_buffer_vec.as_mut_slice());
 
-        // Reverse in place into a stack-allocated buffer to get big-endian hash
-        let mut hash_be = [0u8; 32];
-        for i in 0..32 {
-            hash_be[i] = le[31 - i];
-        }
-
-        // Constant-time lexicographic compare (hash_be <= target_be)
-        // Returns true if hash_be is less than or equal to target_be.
-        for i in 0..32 {
-            if hash_be[i] < target_be[i] {
-                return true; // Current byte is smaller
-            } else if hash_be[i] > target_be[i] {
-                return false; // Current byte is larger
-            }
-            // Bytes are equal, continue
-        }
-        true // All bytes were equal
+    // Reverse in place into a stack-allocated buffer to get big-endian hash
+    let mut hash_be = [0u8; 32];
+    for i in 0..32 {
+        hash_be[i] = le[31 - i];
     }
+
+    // Constant-time lexicographic compare (hash_be <= target_be)
+    // Returns true if hash_be is less than or equal to target_be.
+    for i in 0..32 {
+        if hash_be[i] < target_be[i] {
+            return true; // Current byte is smaller
+        } else if hash_be[i] > target_be[i] {
+            return false; // Current byte is larger
+        }
+        // Bytes are equal, continue
+    }
+    true // All bytes were equal
 }
 
 /// Return `true` if `verus_hash(data)` ≤ `target_be` (both big-endian).
