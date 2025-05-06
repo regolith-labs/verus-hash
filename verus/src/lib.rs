@@ -157,6 +157,15 @@ mod tests {
         assert_eq!(verus_hash(input), expected_le);
     }
 
+    // Add more known vectors here if needed.
+    // Example structure:
+    // #[test]
+    // fn known_vector_example() {
+    //     let input = b"some_input_data";
+    //     let expected_le = hex!("expected_little_endian_hash");
+    //     assert_eq!(verus_hash(input), expected_le);
+    // }
+
     // Remove the old golden tests and the host/bpf comparison test,
     // as we now only have the pure Rust implementation.
     // The known_vector tests above cover the necessary golden vectors for v2.2.
