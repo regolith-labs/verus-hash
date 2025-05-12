@@ -52,8 +52,10 @@ SRC_FILES=(
   "$CRYPTO_SRC/haraka_portable.c" # Portable file (now includes generated constants)
   "$CRYPTO_SRC/verus_hash.cpp"
   "$CRYPTO_SRC/uint256.cpp"
+  "$CRYPTO_SRC/verus_clhash_portable.cpp" # Use portable CLHash for BPF
   # common.cpp might be added later if stubbed
   # haraka_constants.c is no longer needed as source, constants are included
+  # verus_clhash.cpp (non-portable) is excluded from BPF build
 )
 
 # Filter out non-existent files to prevent build errors
