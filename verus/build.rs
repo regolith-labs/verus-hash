@@ -42,130 +42,17 @@ fn main() {
     // --- End Skip ---
 
     // -----------------------------------------------------------------------
-    // 1. Generate Haraka constants using a helper C program (runs on host)
-    //    We do this *before* calling build.sh so the .inc file exists.
+    // Constants are now hardcoded in verus/c/haraka_portable.c
+    // The generation step via generate_constants.c is removed.
     // -----------------------------------------------------------------------
     let crate_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
-    // Define VERUS_BPF_TARGET for C/C++ code if target is BPF/SBF
-    if target.contains("sbf") || target.contains("bpf") {
-        cc::Build::new()
-            .define("VERUS_BPF_TARGET", "1")
-            .compile("tempbuildscript"); // Dummy compile to set define
-        println!("cargo:rustc-cfg=feature=\"verus_bpf_target\""); // Also make it available to Rust code if needed
-    }
-
-    let constants_inc_path = out_dir.join("haraka_rc_vrsc.inc");
-    let generator_src_path = crate_dir.join("c").join("generate_constants.c");
-    let generator_exe_path = out_dir.join("generate_constants");
-
-    println!(
-        "cargo:info=Compiling constants generator: {}",
-        generator_src_path.display()
-    );
-
-    // Compile generate_constants.c using the host C compiler, then link it.
-    // let host_triple = env::var("HOST").expect("HOST environment variable not set"); // Not needed for direct clang call
-    let generator_obj_path = out_dir.join("generate_constants.o"); // Define object path
-                                                                   // Note: generator_exe_path is already defined earlier
-
-    // Step 1: Compile generate_constants.c to an object file using the host compiler directly
-    println!(
-        "cargo:info=Compiling constants generator source: {}",
-        generator_src_path.display()
-    );
-    let compile_status = Command::new("clang") // Use host clang directly
-        .arg("-c") // Compile only flag
-        .arg(&generator_src_path) // Input C file
-        .arg("-o") // Output flag
-        .arg(&generator_obj_path) // Specify object file output path
-        .arg("-O2") // Add optimization
-        // Add host target flags if necessary (e.g., for macOS)
-        // .arg(format!("--target={}", host_triple)) // Might be needed
-        .status()
-        .expect("Failed to invoke host compiler (clang) for constants generator source");
-
-    if !compile_status.success() {
-        panic!(
-            "Failed to compile constants generator source: {}",
-            compile_status
-        );
-    }
-
-    // Step 2: Link the object file into an executable using the host linker (clang)
-    println!(
-        "cargo:info=Linking constants generator object: {}",
-        generator_obj_path.display()
-    );
-    let link_status = Command::new("clang") // Use host clang for linking
-        .arg(&generator_obj_path)
-        .arg("-o") // Output flag
-        .arg(&generator_exe_path) // Specify executable output path
-        .status()
-        .expect("Failed to invoke host linker (clang) for constants generator");
-
-    if !link_status.success() {
-        panic!(
-            "Failed to link constants generator executable: {}",
-            link_status
-        );
-    }
-
-    // Step 3: Run the linked executable
-    println!(
-        "cargo:info=Running constants generator: {}",
-        generator_exe_path.display()
-    );
-    let generator_cmd = Command::new(&generator_exe_path) // Use the correct path to the linked exe
-        .stdout(Stdio::piped()) // Capture stdout
-        .stderr(Stdio::piped()) // Capture stderr
-        .spawn()
-        .expect("Failed to spawn linked constants generator"); // Should find the exe now
-
-    let output = generator_cmd
-        .wait_with_output()
-        .expect("Failed to wait for constants generator");
-
-    if !output.status.success() {
-        eprintln!(
-            "Constants generator failed with status: {}\nstdout:\n{}\nstderr:\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        panic!("Constants generator failed");
-    }
-
-    // Write the captured stdout (the constants) to the .inc file in OUT_DIR
-    println!(
-        "cargo:info=Writing generated constants to: {}",
-        constants_inc_path.display()
-    );
-    let mut file =
-        fs::File::create(&constants_inc_path).expect("Failed to create constants include file");
-    file.write_all(&output.stdout)
-        .expect("Failed to write constants include file");
-
-    // Also copy the generated constants file into the C source directory (`verus/c/`)
-    // so that `#include "haraka_rc_vrsc.inc"` in `haraka_portable.c` can find it
-    // reliably during both host and SBF builds, without relying on OUT_DIR include paths.
-    let constants_dest_path = crate_dir.join("c").join("haraka_rc_vrsc.inc");
-    println!(
-        "cargo:info=Copying generated constants from {} to {}",
-        constants_inc_path.display(),
-        constants_dest_path.display()
-    );
-    fs::copy(&constants_inc_path, &constants_dest_path)
-        .expect("Failed to copy constants include file to c/");
-
-    // Tell cargo to rerun if the generator source changes
-    println!("cargo:rerun-if-changed={}", generator_src_path.display());
-    // Note: build.rs changes automatically trigger rerun.
+    // VERUS_BPF_TARGET define for C/C++ is handled when setting CFLAGS/CXXFLAGS for build.sh
+    // VERUS_BPF_TARGET cfg for Rust is handled when setting rustc-cfg for build.sh
 
     // -----------------------------------------------------------------------
     // Run the shell script so libverushash.a exists (for SBF or host+portable)
-    //    This script will now use the generated constants file.
     // -----------------------------------------------------------------------
     let script = crate_dir.join("build.sh");
 
@@ -265,16 +152,13 @@ fn main() {
     // Add paths relative to CARGO_MANIFEST_DIR (verus crate root) using the 'c' directory
     println!("cargo:rerun-if-changed=c/verus_hash.cpp");
     println!("cargo:rerun-if-changed=c/verus_hash.h");
-    println!("cargo:rerun-if-changed=c/haraka_portable.c"); // Includes generated constants AND zero-key functions
-    println!("cargo:rerun-if-changed=c/haraka_portable.h"); // Includes declarations for zero-key functions
+    println!("cargo:rerun-if-changed=c/haraka_portable.c"); // Now includes hardcoded constants
+    println!("cargo:rerun-if-changed=c/haraka_portable.h");
     println!("cargo:rerun-if-changed=c/common.h");
     println!("cargo:rerun-if-changed=c/uint256.cpp");
     println!("cargo:rerun-if-changed=c/uint256.h");
     println!("cargo:rerun-if-changed=c/verus_clhash.h");
-    println!("cargo:rerun-if-changed=c/verus_clhash_portable.cpp"); // Added portable clhash source
-                                                                    // No need to rerun if haraka_constants.c changes, as it's effectively empty.
-                                                                    // No need to rerun if haraka_rc_vrsc.inc changes, as it's in OUT_DIR and generated by this script.
-                                                                    // Rerun for the generator source is handled above.
+    println!("cargo:rerun-if-changed=c/verus_clhash_portable.cpp");
 
     // Re-run if the build script itself changes
     println!("cargo:rerun-if-changed=build.sh");
