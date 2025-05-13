@@ -183,7 +183,7 @@ inline u128 _mm_cvtsi32_si128_emu(uint32_t lo)
     return result;
 }
 
-u128 _mm_setr_epi8_emu(u_char c0, u_char c1, u_char c2, u_char c3, u_char c4, u_char c5, u_char c6, u_char c7, u_char c8, u_char c9, u_char c10, u_char c11, u_char c12, u_char c13, u_char c14, u_char c15)
+u128 _mm_setr_epi8_emu(unsigned char c0, unsigned char c1, unsigned char c2, unsigned char c3, unsigned char c4, unsigned char c5, unsigned char c6, unsigned char c7, unsigned char c8, unsigned char c9, unsigned char c10, unsigned char c11, unsigned char c12, unsigned char c13, unsigned char c14, unsigned char c15)
 {
     __m128i result;
     ((uint8_t *)&result)[0] = c0;
@@ -256,14 +256,17 @@ inline __m128i _mm_srli_si128_emu(__m128i a, int imm8)
 
 inline __m128i _mm_xor_si128_emu(__m128i a, __m128i b)
 {
-#ifdef _WIN32
-    uint64_t result[2];
-    result[0] = *(uint64_t *)&a ^ *(uint64_t *)&b;
-    result[1] = *((uint64_t *)&a + 1) ^ *((uint64_t *)&b + 1);
-    return *(__m128i *)result;
+    __m128i result;
+#if defined(VERUS_BPF_TARGET) || defined(_WIN32) // Apply to BPF as well, since direct XOR might not work on the struct
+    // Perform element-wise XOR for BPF struct or Windows
+    result.val[0] = a.val[0] ^ b.val[0];
+    result.val[1] = a.val[1] ^ b.val[1];
 #else
-    return a ^ b;
+    // For other host systems that might define __m128i as a native vector type
+    // where direct XOR is overloaded.
+    result = a ^ b;
 #endif
+    return result;
 }
 
 inline __m128i _mm_load_si128_emu(const void *p)
@@ -599,7 +602,7 @@ __m128i __verusclmulwithoutreduction64alignedrepeat_port(__m128i *randomsource, 
 // verus intermediate hash extra
 __m128i __verusclmulwithoutreduction64alignedrepeat_sv2_1_port(__m128i *randomsource, const __m128i buf[4], uint64_t keyMask, __m128i **pMoveScratch)
 {
-    const __m128i pbuf_copy[4] = {_mm_xor_si128(buf[0],buf[2]), _mm_xor_si128(buf[1],buf[3]), buf[2], buf[3]}; 
+    const __m128i pbuf_copy[4] = {_mm_xor_si128_emu(buf[0],buf[2]), _mm_xor_si128_emu(buf[1],buf[3]), buf[2], buf[3]}; 
     const  __m128i *pbuf; 
 
     // divide key mask by 16 from bytes to __m128i
@@ -884,7 +887,7 @@ __m128i __verusclmulwithoutreduction64alignedrepeat_sv2_1_port(__m128i *randomso
 }
 __m128i __verusclmulwithoutreduction64alignedrepeat_sv2_2_port(__m128i *randomsource, const __m128i buf[4], uint64_t keyMask, __m128i **pMoveScratch)
 {
-    const __m128i pbuf_copy[4] = {_mm_xor_si128(buf[0],buf[2]), _mm_xor_si128(buf[1],buf[3]), buf[2], buf[3]}; 
+    const __m128i pbuf_copy[4] = {_mm_xor_si128_emu(buf[0],buf[2]), _mm_xor_si128_emu(buf[1],buf[3]), buf[2], buf[3]}; 
     const  __m128i *pbuf; 
 
     // divide key mask by 16 from bytes to __m128i

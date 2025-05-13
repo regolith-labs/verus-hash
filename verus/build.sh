@@ -74,15 +74,15 @@ if [[ "$COMMON_CPP" == "$STUB_DIR/common.cpp" ]]; then
 fi
 
 # ------------------------------------------------------------------------------
-# Conditionally remove haraka_constants.c for SBF builds
+# Conditionally remove files not essential for verus_hash_v2_c from SBF builds
 # ------------------------------------------------------------------------------
-# We embed the VRSC constants directly into haraka_portable.c via the included
-# haraka_rc_vrsc.inc file. Compiling haraka_constants.c for SBF would lead
-# to linking the wrong (default AES) constants.
 if [[ "$TARGET" == *"bpf"* || "$TARGET" == *"sbf"* ]]; then
-  echo "build.sh: Removing haraka_constants.c from SBF build sources."
+  echo "build.sh: Removing haraka_constants.c from SBF build sources (constants embedded in haraka_portable.c)."
   # Use bash parameter expansion to remove the element
   EXISTING_SRC_FILES=("${EXISTING_SRC_FILES[@]/$CRYPTO_SRC\/haraka_constants.c/}")
+
+  echo "build.sh: Removing verus_clhash_portable.cpp from SBF build sources (not used by verus_hash_v2_c FFI)."
+  EXISTING_SRC_FILES=("${EXISTING_SRC_FILES[@]/$CRYPTO_SRC\/verus_clhash_portable.cpp/}")
 fi
 
 # ------------------------------------------------------------------------------
