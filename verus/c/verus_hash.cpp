@@ -14,8 +14,10 @@ bit output.
 #include "haraka_portable.h" // For verus_memcpy, verus_memset
 
 extern "C" {
-#include "haraka.h"
-// haraka_portable.h already included above
+#ifndef VERUS_BPF_TARGET
+#include "haraka.h" // Only include for host builds
+#endif
+// haraka_portable.h is included via verus_hash.h or directly above for BPF type compatibility
 }
 
 void (*CVerusHash::haraka512Function)(unsigned char *out, const unsigned char *in);

@@ -32,7 +32,9 @@
     // BPF-compatible __m128i is provided by haraka_portable.h (included via verus_hash.h).
 #endif // !VERUS_BPF_TARGET
 
+#ifndef VERUS_BPF_TARGET
 #include <stdlib.h>
+#endif
 #include <stdint.h>
 #include <stddef.h>
 
@@ -62,6 +64,7 @@ struct verusclhash_descr
     uint32_t keySizeInBytes;
 };
 
+#ifndef VERUS_BPF_TARGET // Exclude for BPF
 struct thread_specific_ptr {
     void *ptr;
     thread_specific_ptr() { ptr = NULL; }
@@ -69,15 +72,14 @@ struct thread_specific_ptr {
     {
         if (ptr && ptr != newptr)
         {
-            std::free(ptr);
+            std::free(ptr); // Uses stdlib.h
         }
         ptr = newptr;
-
     }
     void *get() { return ptr; }
 #if defined(__APPLE__) || defined(_WIN32)
     // horrible MingW and Mac with gcc thread local storage bug workaround
-    ~thread_specific_ptr();
+    ~thread_specific_ptr(); // Declaration
 #else
     ~thread_specific_ptr() {
         this->reset();
@@ -87,6 +89,7 @@ struct thread_specific_ptr {
 
 extern thread_local thread_specific_ptr verusclhasher_key;
 extern thread_local thread_specific_ptr verusclhasher_descr;
+#endif // !VERUS_BPF_TARGET
 
 extern int __cpuverusoptimized;
 
@@ -99,34 +102,62 @@ __m128i __verusclmulwithoutreduction64alignedrepeat_sv2_2_port(__m128i *randomso
 
 inline bool IsCPUVerusOptimized()
 {
-    #if defined(__arm__)  || defined(__aarch64__)
-    long hwcaps= getauxval(AT_HWCAP);
-
-    if((hwcaps & HWCAP_AES) && (hwcaps & HWCAP_PMULL))
-        __cpuverusoptimized = true;
-    else
-        __cpuverusoptimized = false;
-        
-    #else
-    if (__cpuverusoptimized & 0x80)
-    {
-        unsigned int eax,ebx,ecx,edx;
-        if (!__get_cpuid(1,&eax,&ebx,&ecx,&edx))
+#ifdef VERUS_BPF_TARGET
+    // SBF target does not have these CPU features, nor should it try to detect them.
+    // The portable C code is used.
+    return false; 
+#else // Host target
+    #if defined(__arm__)  || defined(__aarch64__) // Host ARM
+        #ifdef __linux__ // getauxval is Linux-specific
+            #include <sys/auxv.h> // For getauxval
+            // Define HWCAP_AES and HWCAP_PMULL if not available from system headers
+            #ifndef HWCAP_AES
+            #define HWCAP_AES (1 << 3)
+            #endif
+            #ifndef HWCAP_PMULL
+            #define HWCAP_PMULL (1 << 4)
+            #endif
+            long hwcaps = getauxval(AT_HWCAP);
+            if((hwcaps & HWCAP_AES) && (hwcaps & HWCAP_PMULL))
+                __cpuverusoptimized = true;
+            else
+                __cpuverusoptimized = false;
+        #else // Non-Linux ARM, default to false or add other detection
+            __cpuverusoptimized = false; // Default for non-Linux ARM
+        #endif
+    #else // Host x86
+        if (__cpuverusoptimized & 0x80) // Check sentinel bit
         {
-            __cpuverusoptimized = false;
+            unsigned int eax,ebx,ecx,edx;
+            // __get_cpuid and bit_XXX macros are x86 specific.
+            if (!__get_cpuid(1,&eax,&ebx,&ecx,&edx))
+            {
+                __cpuverusoptimized = false;
+            }
+            else
+            {
+                // Define these only for the host x86 path
+                #ifndef bit_AVX // Guard against redefinition if included elsewhere
+                #define bit_AVX (1 << 28)
+                #define bit_AES (1 << 25)
+                #define bit_PCLMUL (1 << 1)
+                #endif
+                __cpuverusoptimized = ((ecx & (bit_AVX | bit_AES | bit_PCLMUL)) == (bit_AVX | bit_AES | bit_PCLMUL));
+            }
         }
-        else
-        {
-            __cpuverusoptimized = ((ecx & (bit_AVX | bit_AES | bit_PCLMUL)) == (bit_AVX | bit_AES | bit_PCLMUL));
-        }
-    }
-    #endif
+    #endif // __arm__ || __aarch64__
     return __cpuverusoptimized;
+#endif // VERUS_BPF_TARGET
 };
 
 inline void ForceCPUVerusOptimized(bool trueorfalse)
 {
+#ifndef VERUS_BPF_TARGET // Only for host
     __cpuverusoptimized = trueorfalse;
+#else
+    // For BPF, this function is a no-op.
+    (void)trueorfalse; 
+#endif
 };
 
 uint64_t verusclhash(void * random, const unsigned char buf[64], uint64_t keyMask, __m128i **pMoveScratch);
@@ -143,6 +174,7 @@ void *alloc_aligned_buffer(uint64_t bufSize);
 
 #ifdef __cplusplus
 // special high speed hasher for VerusHash 2.0
+#ifndef VERUS_BPF_TARGET // Exclude verusclhasher struct for BPF
 struct verusclhasher {
     uint64_t keySizeInBytes;
     uint64_t keyMask;
@@ -302,6 +334,7 @@ struct verusclhasher {
         return (*verusclhashfunction)((unsigned char *)pkey, buf, keyMask, pMoveScratch);
     }
 };
+#endif // !VERUS_BPF_TARGET
 
 #endif // #ifdef __cplusplus
 
