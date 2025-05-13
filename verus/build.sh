@@ -136,11 +136,12 @@ if [[ "$TARGET" == *"bpf"* || "$TARGET" == *"sbf"* ]]; then
   # SBF/BPF specific flags
   BPF_TARGET_FLAGS="-target bpfel-unknown-unknown -mcpu=generic"
   # Reset CFLAGS/CXXFLAGS for SBF, ignoring host environment flags
-  CFLAGS="$BASE_FLAGS $BPF_TARGET_FLAGS"
-  CXXFLAGS="$BASE_FLAGS $BPF_TARGET_FLAGS"
+  # Add -DVERUS_BPF_TARGET=1 for SBF builds
+  CFLAGS="$BASE_FLAGS $BPF_TARGET_FLAGS -DVERUS_BPF_TARGET=1"
+  CXXFLAGS="$BASE_FLAGS $BPF_TARGET_FLAGS -DVERUS_BPF_TARGET=1"
   # Add SBF-specific C++ flags
   CXXFLAGS="$CXXFLAGS -std=c++17 -nostdlib++ -fno-exceptions -fno-rtti"
-  # Add portable flag
+  # Add portable flag (VERUSHASH_PORTABLE is different from VERUS_BPF_TARGET)
   CFLAGS="$CFLAGS -DVERUSHASH_PORTABLE=1"
   CXXFLAGS="$CXXFLAGS -DVERUSHASH_PORTABLE=1"
   # Disable builtins
@@ -148,6 +149,7 @@ if [[ "$TARGET" == *"bpf"* || "$TARGET" == *"sbf"* ]]; then
   CXXFLAGS="$CXXFLAGS -fno-builtin-memcpy -fno-builtin-memset"
 else
   # For host builds, append to existing flags
+  # VERUS_BPF_TARGET should not be defined for host builds by this script
   CFLAGS="${CFLAGS:-} $BASE_FLAGS"
   CXXFLAGS="${CXXFLAGS:-} $BASE_FLAGS"
   echo "build.sh: Using native host flags for $TARGET"

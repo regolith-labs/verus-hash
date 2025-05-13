@@ -26,7 +26,20 @@ Optimized Implementations for Haraka256 and Haraka512
 #ifndef HARAKA_H_
 #define HARAKA_H_
 
-#include "immintrin.h"
+#ifndef VERUS_BPF_TARGET
+    #include "immintrin.h" // Only include for non-BPF (host) targets
+    typedef __m128i u128;
+#else
+    // For BPF, provide a dummy definition for __m128i and u128
+    // This allows verus_hash.h to include haraka.h without error when VERUS_BPF_TARGET is defined,
+    // even though the intrinsic-based functions from haraka.c (which use these macros)
+    // will not be compiled for BPF.
+    typedef struct {
+        uint64_t val[2];
+    } __m128i_dummy_for_haraka_h_bpf;
+    #define __m128i __m128i_dummy_for_haraka_h_bpf
+    typedef __m128i u128;
+#endif
 
 #define NUMROUNDS 5
 

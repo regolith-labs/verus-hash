@@ -8,7 +8,7 @@ function with a Haraka V2 core. Unlike Haraka, which is made for short
 inputs only, Verus Hash takes any length of input and produces a 256 
 bit output.
 */
-#include <string.h> // For memset, memcpy. Will be replaced by BPF equivalents or compiler builtins.
+// #include <string.h> // For memset, memcpy. Will be replaced by BPF equivalents or compiler builtins. // Removed for SBF
 #include "common.h"
 #include "verus_hash.h"
 #include "haraka_portable.h" // For verus_memcpy, verus_memset

@@ -1,7 +1,36 @@
 #ifndef SPX_HARAKA_H
 #define SPX_HARAKA_H
 
-#include "immintrin.h"
+#include <stdint.h> // Include for uint64_t etc.
+
+#ifdef VERUS_BPF_TARGET
+    // For BPF, provide a compatible definition for __m128i
+    // This structure should be compatible with how _emu functions access it (e.g., casting to uint64_t*).
+    typedef struct {
+        uint64_t val[2]; // Two 64-bit values to make up 128 bits
+    } __m128i_bpf_def;
+    #define __m128i __m128i_bpf_def // Use our BPF-friendly type via macro
+    typedef __m128i u128;
+
+    // Define size_t for BPF if not available (usually it is via compiler builtins or other headers)
+    // If errors persist related to size_t, this might need adjustment or a more specific BPF header.
+    #ifndef _SIZE_T_DEFINED
+    #define _SIZE_T_DEFINED
+    typedef unsigned long size_t;
+    #endif
+    
+    // Custom memory functions for BPF
+    void *verus_memcpy(void *dest, const void *src, size_t n);
+    void *verus_memset(void *s, int c, size_t n);
+
+#else
+    #include "immintrin.h" // Only include for non-BPF targets
+    typedef __m128i u128;
+    // For host, use standard library functions
+    #include <string.h> // For memcpy, memset
+    #define verus_memcpy memcpy
+    #define verus_memset memset
+#endif
 
 #define NUMROUNDS 5
 

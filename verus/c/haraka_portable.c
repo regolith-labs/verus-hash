@@ -1,9 +1,8 @@
 /*
 Plain C implementation of the Haraka256 and Haraka512 permutations.
 */
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
+// stdio.h, stdlib.h removed for SBF compatibility
+#include <string.h> // For memcpy, memset (often compiler builtins or provided by haraka_portable.h)
 
 #include "haraka_portable.h"
 
@@ -142,24 +141,32 @@ void load_constants_port()
     // verus_memset(rc0, 0, sizeof(rc0));
 }
 
+// tweak_constants is not used in the SBF path and relies on haraka_S,
+// which itself relies on haraka512_perm.
+// If haraka_S is needed, ensure its dependencies are SBF-compatible.
+// For now, we assume tweak_constants is not essential for the FFI functions being used.
+/*
 void tweak_constants(const unsigned char *pk_seed, const unsigned char *sk_seed,
                      unsigned long long seed_length)
 {
     unsigned char buf[40*16];
 
-    /* Use the standard constants to generate tweaked ones. */
-    memcpy(rc, haraka_rc, 40*16);
+    // Use the standard constants to generate tweaked ones. 
+    // Note: haraka_rc is not defined in this file, this would need adjustment
+    // if tweak_constants were to be used. Assuming it's not for SBF.
+    // memcpy(rc, haraka_rc, 40*16); 
 
-    /* Constants for sk.seed */
+    // Constants for sk.seed
     if (sk_seed != NULL) {
         haraka_S(buf, 40*16, sk_seed, seed_length);
         memcpy(rc_sseed, buf, 40*16);
     }
 
-    /* Constants for pk.seed */
+    // Constants for pk.seed
     haraka_S(buf, 40*16, pk_seed, seed_length);
     memcpy(rc, buf, 40*16);    
 }
+*/
 
 static void haraka_S_absorb(unsigned char *s, 
                             const unsigned char *m, unsigned long long mlen,

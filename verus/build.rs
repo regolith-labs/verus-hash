@@ -1,8 +1,9 @@
 use std::env;
-use std::fs;
-use std::io::Write;
+// fs and Write are no longer used directly in this simplified build script
+// use std::fs;
+// use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Command; // Stdio is no longer used directly
 
 // Use the `cc` crate to compile the generator helper
 extern crate cc;
@@ -46,7 +47,7 @@ fn main() {
     // The generation step via generate_constants.c is removed.
     // -----------------------------------------------------------------------
     let crate_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let _out_dir = PathBuf::from(env::var("OUT_DIR").unwrap()); // Prefixed with _ as it's not directly used later by this name
 
     // VERUS_BPF_TARGET define for C/C++ is handled when setting CFLAGS/CXXFLAGS for build.sh
     // VERUS_BPF_TARGET cfg for Rust is handled when setting rustc-cfg for build.sh
@@ -72,12 +73,12 @@ fn main() {
 
     // OUT_DIR is set by Cargo and is where the script should place the library.
     // Pass it as an environment variable to the script.
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let out_dir_path = PathBuf::from(env::var("OUT_DIR").unwrap());
 
     // Prepare the command to run build.sh
     let mut command = Command::new("bash");
     command.arg(&script);
-    command.env("OUT_DIR", &out_dir); // Pass OUT_DIR to the script
+    command.env("OUT_DIR", &out_dir_path); // Pass OUT_DIR to the script
 
     // Explicitly forward CC and CXX from the build environment to the script's environment.
     // cargo build-sbf should set these to the Solana SDK's clang/clang++.
@@ -113,7 +114,7 @@ fn main() {
         // Prepare a separate command for capturing output, also passing env vars
         let mut error_command = Command::new("bash");
         error_command.arg(&script);
-        error_command.env("OUT_DIR", &out_dir);
+        error_command.env("OUT_DIR", &out_dir_path); // Using out_dir_path
         if let Some(ref cc_val) = cc {
             error_command.env("CC", cc_val);
         }
@@ -137,7 +138,7 @@ fn main() {
     // 2. Tell Cargo where to find and how to link the static lib (if built)
     // -----------------------------------------------------------------------
     // The library `libverushash.a` should now be in `OUT_DIR`.
-    println!("cargo:rustc-link-search=native={}", out_dir.display());
+    println!("cargo:rustc-link-search=native={}", out_dir_path.display()); // Using out_dir_path
     println!("cargo:rustc-link-lib=static=verushash");
 
     // IMPORTANT: **do NOT link the system C++ std-lib when building for SBF**

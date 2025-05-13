@@ -20,8 +20,16 @@ This provides the PoW hash function for Verus, enabling CPU mining.
 
 extern "C" 
 {
-#include "haraka.h"
-#include "haraka_portable.h"
+#ifdef VERUS_BPF_TARGET
+    // For BPF, only haraka_portable.h is needed for type definitions and portable function declarations.
+    // It will define __m128i and u128 in a BPF-compatible way.
+    #include "haraka_portable.h"
+#else
+    // For HOST, include haraka.h first (which includes immintrin.h and defines u128 from the intrinsic __m128i).
+    // Then include haraka_portable.h (which will also include immintrin.h - guarded - and re-typedef u128, which is fine).
+    #include "haraka.h"
+    #include "haraka_portable.h"
+#endif
 }
 
 class CVerusHash

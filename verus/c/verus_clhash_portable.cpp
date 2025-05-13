@@ -20,11 +20,11 @@
 
 #include "verus_hash.h"
 
-#include <assert.h>
-#include <string.h>
+// #include <assert.h> // Removed for SBF
+// #include <string.h> // Removed for SBF, use verus_memcpy/memset
 
 extern "C" {
-#include "haraka_portable.h"
+#include "haraka_portable.h" // For verus_memcpy, verus_memset, and types
 }
 
 #ifdef __APPLE__

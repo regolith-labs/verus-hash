@@ -8,7 +8,7 @@
 
 // #include "utilstrencodings.h" // Removed: SetHex/GetHex and dependencies removed
 // #include <stdio.h> // Removed: sprintf removed
-#include <string.h> // For memcmp (compiler builtin usually)
+// #include <string.h> // For memcmp (compiler builtin usually) // Removed for SBF
 
 // template <unsigned int BITS> // Removed: std::vector
 // base_blob<BITS>::base_blob(const std::vector<unsigned char>& vch)
