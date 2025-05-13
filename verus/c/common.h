@@ -10,10 +10,59 @@
 // bitcoin-config.h removed for BPF compatibility
 
 //#include "sodium.h"
-#ifdef WIN32
-#include "compat/endian.h"
-#else
-#include <endian.h>
+
+#ifdef VERUS_BPF_TARGET
+    // SBF target is little-endian.
+
+    // Little-endian to host / host to little-endian are no-ops
+    #define le16toh(x) ((uint16_t)(x))
+    #define le32toh(x) ((uint32_t)(x))
+    #define le64toh(x) ((uint64_t)(x))
+
+    #define htole16(x) ((uint16_t)(x))
+    #define htole32(x) ((uint32_t)(x))
+    #define htole64(x) ((uint64_t)(x))
+
+    // Big-endian to host / host to big-endian require byte swapping
+    static inline uint16_t bpf_bswap16(uint16_t x) {
+        return ((x >> 8) & 0xff) | ((x & 0xff) << 8);
+    }
+
+    static inline uint32_t bpf_bswap32(uint32_t x) {
+        return ((x >> 24) & 0x000000ff) |
+               ((x >>  8) & 0x0000ff00) |
+               ((x <<  8) & 0x00ff0000) |
+               ((x << 24) & 0xff000000);
+    }
+
+    static inline uint64_t bpf_bswap64(uint64_t x) {
+        return ((x >> 56) & 0x00000000000000ffULL) |
+               ((x >> 40) & 0x000000000000ff00ULL) |
+               ((x >> 24) & 0x0000000000ff0000ULL) |
+               ((x >>  8) & 0x00000000ff000000ULL) |
+               ((x <<  8) & 0x000000ff00000000ULL) |
+               ((x << 24) & 0x0000ff0000000000ULL) |
+               ((x << 40) & 0x00ff000000000000ULL) |
+               ((x << 56) & 0xff00000000000000ULL);
+    }
+
+    #define be16toh(x) bpf_bswap16(x) // Define even if not used by ReadBE16, for completeness
+    #define be32toh(x) bpf_bswap32(x)
+    #define be64toh(x) bpf_bswap64(x)
+
+    #define htobe16(x) bpf_bswap16(x) // Define even if not used by WriteBE16
+    #define htobe32(x) bpf_bswap32(x)
+    #define htobe64(x) bpf_bswap64(x)
+
+#else // Not VERUS_BPF_TARGET (host systems)
+    #ifdef WIN32
+        // This path is for Windows. If it's ever used, compat/endian.h would be needed.
+        // The file compat/endian.h is not present in the project.
+        // This could be an issue for Windows host builds if <endian.h> is not found.
+        #include "compat/endian.h" 
+    #else
+        #include <endian.h> // For Linux, macOS, etc.
+    #endif
 #endif
 
 //#if defined(NDEBUG)

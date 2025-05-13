@@ -2,7 +2,7 @@
 Plain C implementation of the Haraka256 and Haraka512 permutations.
 */
 // stdio.h, stdlib.h removed for SBF compatibility
-#include <string.h> // For memcpy, memset (often compiler builtins or provided by haraka_portable.h)
+// string.h include is now handled by haraka_portable.h conditionally
 
 #include "haraka_portable.h"
 
@@ -92,7 +92,8 @@ static const unsigned char sbox[256] =
 // Simulate _mm_aesenc_si128 instructions from AESNI
 void aesenc(unsigned char *s, const unsigned char *rk) 
 {
-    unsigned char i, t, u, v[4][4];
+    unsigned char i, t, u; // v is now static
+    static unsigned char v[4][4]; // Made static
     for (i = 0; i < 16; ++i) {
         v[((i / 4) + 4 - (i%4) ) % 4][i % 4] = sbox[s[i]];
     }
@@ -112,7 +113,7 @@ void aesenc(unsigned char *s, const unsigned char *rk)
 // Simulate _mm_unpacklo_epi32
 void unpacklo32(unsigned char *t, unsigned char *a, unsigned char *b) 
 {
-    unsigned char tmp[16];
+    static unsigned char tmp[16]; // Made static
     memcpy(tmp, a, 4);
     memcpy(tmp + 4, b, 4);
     memcpy(tmp + 8, a + 4, 4);
@@ -123,7 +124,7 @@ void unpacklo32(unsigned char *t, unsigned char *a, unsigned char *b)
 // Simulate _mm_unpackhi_epi32
 void unpackhi32(unsigned char *t, unsigned char *a, unsigned char *b) 
 {
-    unsigned char tmp[16];
+    static unsigned char tmp[16]; // Made static
     memcpy(tmp, a + 8, 4);
     memcpy(tmp + 4, b + 8, 4);
     memcpy(tmp + 8, a + 12, 4);
@@ -237,7 +238,7 @@ void haraka512_perm(unsigned char *out, const unsigned char *in)
 {
     int i, j;
 
-    unsigned char s[64], tmp[16];
+    static unsigned char s[64], tmp[16]; // Made static
 
     memcpy(s, in, 16);
     memcpy(s + 16, in + 16, 16);
@@ -271,7 +272,7 @@ void haraka512_perm_keyed(unsigned char *out, const unsigned char *in, const u12
 {
     int i, j;
 
-    unsigned char s[64], tmp[16];
+    static unsigned char s[64], tmp[16]; // Made static
 
     memcpy(s, in, 16);
     memcpy(s + 16, in + 16, 16);
@@ -343,7 +344,7 @@ void haraka512_perm_zero(unsigned char *out, const unsigned char *in)
 {
     int i, j;
 
-    unsigned char s[64], tmp[16];
+    static unsigned char s[64], tmp[16]; // Made static
 
     memcpy(s, in, 16);
     memcpy(s + 16, in + 16, 16);
@@ -414,11 +415,46 @@ void haraka256_port(unsigned char *out, const unsigned char *in)
         memcpy(s, tmp, 16);
     }
 
-    /* Feed-forward */
+/* Feed-forward */
     for (i = 0; i < 32; i++) {
         out[i] = in[i] ^ s[i];
     }
 }
+
+#ifdef VERUS_BPF_TARGET
+// BPF-compatible implementations of memcpy and memset
+// These are used when VERUS_BPF_TARGET is defined, and haraka_portable.h
+// will #define memcpy to verus_memcpy and memset to verus_memset.
+void *verus_memcpy(void *dest, const void *src, size_t n) {
+    unsigned char *d = (unsigned char *)dest;
+    const unsigned char *s = (const unsigned char *)src;
+    for (size_t i = 0; i < n; i++) {
+        d[i] = s[i];
+    }
+    return dest;
+}
+
+void *verus_memset(void *s, int c, size_t n) {
+    unsigned char *p = (unsigned char *)s;
+    unsigned char val = (unsigned char)c;
+    for (size_t i = 0; i < n; i++) {
+        p[i] = val;
+    }
+    return s;
+}
+
+// BPF-compatible implementation of memcmp
+int verus_memcmp(const void *s1, const void *s2, size_t n) {
+    const unsigned char *p1 = (const unsigned char *)s1;
+    const unsigned char *p2 = (const unsigned char *)s2;
+    for (size_t i = 0; i < n; i++) {
+        if (p1[i] != p2[i]) {
+            return p1[i] < p2[i] ? -1 : 1;
+        }
+    }
+    return 0;
+}
+#endif // VERUS_BPF_TARGET
 
 void haraka256_sk(unsigned char *out, const unsigned char *in)
 {

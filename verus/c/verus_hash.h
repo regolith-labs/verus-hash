@@ -11,12 +11,12 @@ This provides the PoW hash function for Verus, enabling CPU mining.
 // verbose output when defined
 //#define VERUSHASHDEBUG 1
 
-#include <cstring> // For size_t, NULL. Will be replaced by BPF equivalents or compiler builtins.
+// <cstring> removed. size_t and NULL are now provided by haraka_portable.h for BPF.
 // #include <vector> // Removed, ensure no std::vector usage remains or is BPF-compatible.
 
 #include "uint256.h"
 #include "verus_clhash.h" // Still needed for verusclhasher type, constructor will be conditional
-#include "haraka_portable.h" // For verus_memset, verus_memcpy
+#include "haraka_portable.h" // For verus_memset, verus_memcpy, size_t, NULL
 
 extern "C" 
 {

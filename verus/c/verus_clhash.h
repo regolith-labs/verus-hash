@@ -20,17 +20,21 @@
 #ifndef INCLUDE_VERUS_CLHASH_H
 #define INCLUDE_VERUS_CLHASH_H
 
-#ifndef _WIN32
-#include <cpuid.h>
-#include <x86intrin.h>
-#else
-#include <intrin.h>
-#endif // !WIN32
+#ifndef VERUS_BPF_TARGET // For host builds
+    #ifndef _WIN32
+        #include <cpuid.h>
+        #include <x86intrin.h>
+    #else
+        #include <intrin.h>
+    #endif // !_WIN32
+#else // For BPF builds
+    // For BPF, we don't include x86 specific headers.
+    // BPF-compatible __m128i is provided by haraka_portable.h (included via verus_hash.h).
+#endif // !VERUS_BPF_TARGET
 
 #include <stdlib.h>
 #include <stdint.h>
 #include <stddef.h>
-#include <assert.h>
 
 #ifdef __cplusplus
 extern "C" {

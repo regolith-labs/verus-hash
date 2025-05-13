@@ -5,29 +5,45 @@
 
 #ifdef VERUS_BPF_TARGET
     // For BPF, provide a compatible definition for __m128i
-    // This structure should be compatible with how _emu functions access it (e.g., casting to uint64_t*).
     typedef struct {
         uint64_t val[2]; // Two 64-bit values to make up 128 bits
     } __m128i_bpf_def;
-    #define __m128i __m128i_bpf_def // Use our BPF-friendly type via macro
+    #define __m128i __m128i_bpf_def
     typedef __m128i u128;
 
-    // Define size_t for BPF if not available (usually it is via compiler builtins or other headers)
-    // If errors persist related to size_t, this might need adjustment or a more specific BPF header.
+    // Define size_t for BPF
     #ifndef _SIZE_T_DEFINED
     #define _SIZE_T_DEFINED
     typedef unsigned long size_t;
     #endif
     
-    // Custom memory functions for BPF
-    void *verus_memcpy(void *dest, const void *src, size_t n);
-    void *verus_memset(void *s, int c, size_t n);
+    // Declare the actual implementations that are in haraka_portable.c
+    // These need to be extern so the inline functions below can link to them.
+    extern void *verus_memcpy(void *dest, const void *src, size_t n);
+    extern void *verus_memset(void *s, int c, size_t n);
+    extern int verus_memcmp(const void *s1, const void *s2, size_t n);
 
+    // Define NULL if not already defined for BPF target
+    #ifndef NULL
+    #define NULL ((void*)0)
+    #endif
+
+    // Provide inline functions that call the actual implementations.
+    // These effectively become the "memcpy" and "memset" for compilation units
+    // including this header when VERUS_BPF_TARGET is defined.
+    static inline void* memcpy(void* dest, const void* src, size_t n) {
+        return verus_memcpy(dest, src, n);
+    }
+    static inline void* memset(void* s, int c, size_t n) {
+        return verus_memset(s, c, n);
+    }
 #else
-    #include "immintrin.h" // Only include for non-BPF targets
+    // Host target: include standard headers and use standard functions
+    #include "immintrin.h" 
     typedef __m128i u128;
-    // For host, use standard library functions
-    #include <string.h> // For memcpy, memset
+    #include <string.h> // For standard memcpy, memset
+    // Define verus_memcpy/memset as aliases to standard functions for host code
+    // if it happens to call the verus_ prefixed versions.
     #define verus_memcpy memcpy
     #define verus_memset memset
 #endif
@@ -39,7 +55,7 @@ typedef unsigned long long u64;
 #else
 typedef unsigned long u64;
 #endif
-typedef __m128i u128;
+// typedef __m128i u128; // u128 is already defined based on VERUS_BPF_TARGET
 
 extern void aesenc(unsigned char *s, const unsigned char *rk);
 

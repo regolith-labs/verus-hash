@@ -6,11 +6,19 @@
 #ifndef BITCOIN_UINT256_H
 #define BITCOIN_UINT256_H
 
-#include <assert.h> // Will be removed if asserts are problematic, for now keep for IsNull etc.
-#include <cstring>  // For memcmp
+
+// <cstring> removed. memcmp will be handled by haraka_portable.h for BPF.
 #include <stdint.h>
 // <stdexcept>, <string>, <vector> removed for BPF compatibility
-#include "haraka_portable.h" // For verus_memset, verus_memcpy
+#include "haraka_portable.h" // For verus_memset, verus_memcpy, and verus_memcmp declaration
+
+#ifdef VERUS_BPF_TARGET
+    // Use our BPF-compatible memcmp
+    #define memcmp verus_memcmp
+#else
+    // For host, ensure standard memcmp is available if not already via other includes
+    #include <cstring> 
+#endif
 
 #ifdef _MSC_VER
 # define _ALIGN(x) __declspec(align(x))
