@@ -180,6 +180,9 @@ fi
 OBJ_FILES=()
 echo "--- Compiling VerusHash sources for BPF ---"
 for src in "${EXISTING_SRC_FILES[@]}"; do
+  if [[ -z "$src" ]]; then # If src is an empty string
+    continue               # Skip this iteration, do not attempt to compile or add to OBJ_FILES
+  fi
   # Place object files directly in OUT_DIR
   obj="$OUT_DIR/$(basename "${src%.*}").o"
   OBJ_FILES+=("$obj")
