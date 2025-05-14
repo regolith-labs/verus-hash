@@ -113,29 +113,29 @@ void (*CVerusHashV2::haraka256Function)(unsigned char *out, const unsigned char 
 
 void CVerusHashV2::init()
 {
-#ifdef VERUS_BPF_TARGET
-    // For BPF, always use portable versions and ensure constants are loaded.
+#if defined(VERUS_FORCE_PORTABLE_IMPL) || defined(VERUS_BPF_TARGET)
+    // If portable implementation is forced by Rust feature, or if it's BPF target
     load_constants_port(); // From haraka_portable.h
     haraka512Function = &haraka512_port;
     haraka512KeyedFunction = &haraka512_port_keyed; // Not used by Finalize() but set for completeness
     haraka256Function = &haraka256_port;         // Not used by Finalize() but set for completeness
-#else
+#else // Host target, portable feature not forced by Rust, so use CPU detection
     if (IsCPUVerusOptimized())
     {
-        load_constants(); // From haraka.h
+        load_constants(); // From haraka.h (intrinsic-based)
         haraka512Function = &haraka512;
         haraka512KeyedFunction = &haraka512_keyed;
         haraka256Function = &haraka256;
     }
     else
     {
-        // load the haraka constants
+        // Fallback to portable if CPU is not optimized (and portable not forced)
         load_constants_port(); // From haraka_portable.h
         haraka512Function = &haraka512_port;
         haraka512KeyedFunction = &haraka512_port_keyed;
         haraka256Function = &haraka256_port;
     }
-#endif // VERUS_BPF_TARGET
+#endif
 }
 
 void CVerusHashV2::Hash(void *result, const void *data, size_t len)

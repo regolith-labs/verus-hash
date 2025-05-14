@@ -141,17 +141,23 @@ if [[ "$TARGET" == *"bpf"* || "$TARGET" == *"sbf"* ]]; then
   CXXFLAGS="$BASE_FLAGS $BPF_TARGET_FLAGS -DVERUS_BPF_TARGET=1"
   # Add SBF-specific C++ flags
   CXXFLAGS="$CXXFLAGS -std=c++17 -nostdlib++ -fno-exceptions -fno-rtti"
-  # Add portable flag (VERUSHASH_PORTABLE is different from VERUS_BPF_TARGET)
-  CFLAGS="$CFLAGS -DVERUSHASH_PORTABLE=1"
-  CXXFLAGS="$CXXFLAGS -DVERUSHASH_PORTABLE=1"
+  # For SBF, we always use portable implementations.
+  CFLAGS="$CFLAGS -DVERUS_FORCE_PORTABLE_IMPL=1 -DVERUSHASH_PORTABLE=1"
+  CXXFLAGS="$CXXFLAGS -DVERUS_FORCE_PORTABLE_IMPL=1 -DVERUSHASH_PORTABLE=1"
   # Disable builtins
   CFLAGS="$CFLAGS -fno-builtin-memcpy -fno-builtin-memset"
   CXXFLAGS="$CXXFLAGS -fno-builtin-memcpy -fno-builtin-memset"
 else
-  # For host builds, append to existing flags
-  # VERUS_BPF_TARGET should not be defined for host builds by this script
-  CFLAGS="${CFLAGS:-} $BASE_FLAGS"
-  CXXFLAGS="${CXXFLAGS:-} $BASE_FLAGS"
+  # For host builds, start with BASE_FLAGS and append to any existing CFLAGS/CXXFLAGS from env
+  # CFLAGS and CXXFLAGS from env are already incorporated by build.rs into the command's env
+  # So here we just build upon BASE_FLAGS and then add specifics.
+  # However, to be safe and ensure build.rs flags are respected, let's use them as a base.
+  _TEMP_CFLAGS="${CFLAGS:-}"
+  _TEMP_CXXFLAGS="${CXXFLAGS:-}"
+
+  CFLAGS="$BASE_FLAGS $_TEMP_CFLAGS"
+  CXXFLAGS="$BASE_FLAGS $_TEMP_CXXFLAGS"
+
   echo "build.sh: Using native host flags for $TARGET"
   # Native host specific flags (adjust as needed for different hosts)
   # Assume C++17 is desired for host too, but use standard library
@@ -160,18 +166,22 @@ else
   # Add macOS specific flags if on Darwin
   if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "build.sh: Adding macOS specific flags"
-    # Match architecture and deployment target with Rust linker flags if possible
-    # Using 10.14 as seen in the linker error message
-    MACOS_ARCH="x86_64" # Assuming x86_64 based on error log
+    MACOS_ARCH="x86_64"
     MACOS_MIN_VER="10.14"
     CFLAGS="$CFLAGS -arch $MACOS_ARCH -mmacosx-version-min=$MACOS_MIN_VER"
     CXXFLAGS="$CXXFLAGS -arch $MACOS_ARCH -mmacosx-version-min=$MACOS_MIN_VER"
   fi
-  # Add flags for other host OSes here if needed (e.g., Linux)
 
-  # Add portable flag (also needed for host tests using portable code)
+  # Add VERUSHASH_PORTABLE=1 for Haraka include logic (used by both portable and non-portable host paths)
   CFLAGS="$CFLAGS -DVERUSHASH_PORTABLE=1"
   CXXFLAGS="$CXXFLAGS -DVERUSHASH_PORTABLE=1"
+
+  # If build.rs requested portable C implementation for host:
+  if [[ "${BUILD_RS_REQUESTS_PORTABLE_C_IMPL:-0}" == "1" ]]; then
+    echo "build.sh: Adding -DVERUS_FORCE_PORTABLE_IMPL=1 for host portable build"
+    CFLAGS="$CFLAGS -DVERUS_FORCE_PORTABLE_IMPL=1"
+    CXXFLAGS="$CXXFLAGS -DVERUS_FORCE_PORTABLE_IMPL=1"
+  fi
 fi
 
 # ------------------------------------------------------------------------------

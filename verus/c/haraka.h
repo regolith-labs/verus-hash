@@ -26,6 +26,10 @@ Optimized Implementations for Haraka256 and Haraka512
 #ifndef HARAKA_H_
 #define HARAKA_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifndef VERUS_BPF_TARGET
     #include "immintrin.h" // Only include for non-BPF (host) targets
     typedef __m128i u128;
@@ -137,5 +141,9 @@ void haraka512_zero(unsigned char *out, const unsigned char *in);
 void haraka512_keyed(unsigned char *out, const unsigned char *in, const u128 *rc);
 void haraka512_4x(unsigned char *out, const unsigned char *in);
 void haraka512_8x(unsigned char *out, const unsigned char *in);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

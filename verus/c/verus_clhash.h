@@ -64,7 +64,7 @@ struct verusclhash_descr
     uint32_t keySizeInBytes;
 };
 
-#ifndef VERUS_BPF_TARGET // Exclude for BPF
+#if !defined(VERUS_FORCE_PORTABLE_IMPL) && !defined(VERUS_BPF_TARGET) // Exclude for BPF and Portable Host
 struct thread_specific_ptr {
     void *ptr;
     thread_specific_ptr() { ptr = NULL; }
@@ -72,7 +72,7 @@ struct thread_specific_ptr {
     {
         if (ptr && ptr != newptr)
         {
-            std::free(ptr); // Uses stdlib.h
+            free(ptr); // Uses stdlib.h
         }
         ptr = newptr;
     }
@@ -89,7 +89,7 @@ struct thread_specific_ptr {
 
 extern thread_local thread_specific_ptr verusclhasher_key;
 extern thread_local thread_specific_ptr verusclhasher_descr;
-#endif // !VERUS_BPF_TARGET
+#endif // !VERUS_FORCE_PORTABLE_IMPL && !VERUS_BPF_TARGET
 
 extern int __cpuverusoptimized;
 
@@ -174,7 +174,7 @@ void *alloc_aligned_buffer(uint64_t bufSize);
 
 #ifdef __cplusplus
 // special high speed hasher for VerusHash 2.0
-#ifndef VERUS_BPF_TARGET // Exclude verusclhasher struct for BPF
+#if !defined(VERUS_FORCE_PORTABLE_IMPL) && !defined(VERUS_BPF_TARGET) // Exclude verusclhasher struct for BPF and Portable Host
 struct verusclhasher {
     uint64_t keySizeInBytes;
     uint64_t keyMask;
@@ -195,8 +195,23 @@ struct verusclhasher {
     verusclhasher(uint64_t keysize=VERUSKEYSIZE, int solutionVersion=SOLUTION_VERUSHHASH_V2) : keySizeInBytes((keysize >> 5) << 5)
     {
 #ifdef __APPLE__
-       __tls_init();
+       // __tls_init(); // Removed: Modern C++ thread_local handles initialization.
 #endif
+#if defined(VERUS_FORCE_PORTABLE_IMPL)
+        // If portable implementation is forced by Rust feature
+        if (solutionVersion >= SOLUTION_VERUSHHASH_V2_1) {
+            if (solutionVersion >= SOLUTION_VERUSHHASH_V2_2) {
+                verusclhashfunction = &verusclhash_sv2_2_port;
+                verusinternalclhashfunction = &__verusclmulwithoutreduction64alignedrepeat_sv2_2_port;
+            } else {
+                verusclhashfunction = &verusclhash_sv2_1_port;
+                verusinternalclhashfunction = &__verusclmulwithoutreduction64alignedrepeat_sv2_1_port;
+            }
+        } else {
+            verusclhashfunction = &verusclhash_port;
+            verusinternalclhashfunction = &__verusclmulwithoutreduction64alignedrepeat_port;
+        }
+#else // Host target, portable feature not forced by Rust, so use CPU detection
         if (IsCPUVerusOptimized())
         {
             if (solutionVersion >= SOLUTION_VERUSHHASH_V2_1)
@@ -220,6 +235,7 @@ struct verusclhasher {
         }
         else
         {
+            // Fallback to portable if CPU is not optimized (and portable not forced)
             if (solutionVersion >= SOLUTION_VERUSHHASH_V2_1)
             {
                 if (solutionVersion >= SOLUTION_VERUSHHASH_V2_2)
@@ -239,7 +255,7 @@ struct verusclhasher {
                 verusinternalclhashfunction = &__verusclmulwithoutreduction64alignedrepeat_port;
             }
         }
-
+#endif
         // if we changed, change it
         if (verusclhasher_key.get() && keySizeInBytes != ((verusclhash_descr *)verusclhasher_descr.get())->keySizeInBytes)
         {
@@ -334,7 +350,7 @@ struct verusclhasher {
         return (*verusclhashfunction)((unsigned char *)pkey, buf, keyMask, pMoveScratch);
     }
 };
-#endif // !VERUS_BPF_TARGET
+#endif // !VERUS_FORCE_PORTABLE_IMPL && !VERUS_BPF_TARGET
 
 #endif // #ifdef __cplusplus
 

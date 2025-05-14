@@ -3,7 +3,7 @@
 use bytemuck::{Pod, Zeroable};
 use solana_program::{
     self,
-    account_info::{next_account_info, AccountInfo},
+    account_info::AccountInfo,
     declare_id,
     entrypoint::ProgramResult,
     instruction::{AccountMeta, Instruction},
@@ -104,27 +104,27 @@ pub fn process_instruction(
                 .try_into()
                 .map_err(|_| ProgramError::InvalidInstructionData)?; // Should match size 32
 
-            // --- Log the round constants used by the program ---
-            let rc = verus::haraka_rc();
-            solana_program::msg!("RC[0..16] on-chain = {:02x?}", &rc[..16]);
-            // --- End RC logging ---
+            // --- RC logging removed as verus::haraka_rc() is no longer available ---
 
-            // --- Log the hash calculated by the program ---
-            // The `msg` slice is now the correct 64-byte buffer to hash
+            // Calculate the hash using the verus crate
             let hash_le = verus::verus_hash_v2(msg); // Calculate hash (LE) of the 64-byte message
+
+            // Convert hash to Big-Endian for comparison
             let mut hash_be = [0u8; 32];
             for i in 0..32 {
-                hash_be[i] = hash_le[31 - i]; // Convert to BE
+                hash_be[i] = hash_le[31 - i]; // Convert LE to BE
             }
-            solana_program::msg!("Program received msg (64 bytes): {:x?}", msg); // Log the message being hashed
+
+            // --- Log details for debugging ---
+            solana_program::msg!("Program received msg (64 bytes): {:x?}", msg);
             solana_program::msg!("Program calculated hash (LE): {:x?}", hash_le);
             solana_program::msg!("Program calculated hash (BE): {:x?}", hash_be);
             solana_program::msg!("Target (BE): {:x?}", target_be);
             // --- End logging ---
 
-            // Perform the verification using the verus crate.
-            // It will hash the provided 64-byte `msg` and compare against `target_be`.
-            if verus::verify_hash(msg, target_be) {
+            // Perform the verification by comparing the big-endian hash with the big-endian target
+            if hash_be <= *target_be {
+                // Compare hash_be with the dereferenced target_be
                 solana_program::msg!("Hash verification successful (program).");
                 sol_log_compute_units(); // Log CUs on success
                 Ok(())

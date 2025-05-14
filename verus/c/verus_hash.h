@@ -93,27 +93,26 @@ class CVerusHashV2
 
         static void init();
 
-#ifndef VERUS_BPF_TARGET
+#if !defined(VERUS_FORCE_PORTABLE_IMPL) && !defined(VERUS_BPF_TARGET)
         verusclhasher vclh;
 #endif
 
         CVerusHashV2(int solutionVersion=SOLUTION_VERUSHHASH_V2)
-#ifndef VERUS_BPF_TARGET
-        // Initialize vclh only if not targeting BPF, or if it's made BPF-compatible later
+#if !defined(VERUS_FORCE_PORTABLE_IMPL) && !defined(VERUS_BPF_TARGET)
+        // Initialize vclh only if not portable and not targeting BPF
         : vclh(VERUSKEYSIZE, solutionVersion)
 #endif
         {
-#ifndef VERUS_BPF_TARGET
+#if !defined(VERUS_FORCE_PORTABLE_IMPL) && !defined(VERUS_BPF_TARGET)
             // we must have allocated key space, or can't run
-            // This check relies on verusclhasher_key which is thread_local and problematic for BPF
+            // This check relies on verusclhasher_key which is thread_local
             if (!verusclhasher_key.get())
             {
                 // printf("ERROR: failed to allocate hash buffer - terminating\n"); // BPF: no printf
                 // assert(false); // BPF: no assert
             }
 #else
-            // BPF target: vclh is not initialized here if excluded.
-            // If solutionVersion is passed, it's unused in this BPF-simplified constructor.
+            // Portable or BPF target: vclh is not initialized here.
             (void)solutionVersion; // Suppress unused parameter warning
 #endif
         }
@@ -154,7 +153,10 @@ class CVerusHashV2
             } while (left > 0);
         }
         inline void ExtraHashKeyed(unsigned char hash[32], u128 *key) { (*haraka512KeyedFunction)(hash, curBuf, key); }
+#endif // VERUS_BPF_TARGET
 
+    // Methods ONLY for non-portable AND non-BPF (these use vclh, verusclhasher_key, etc.)
+#if !defined(VERUS_FORCE_PORTABLE_IMPL) && !defined(VERUS_BPF_TARGET)
         // chains Haraka256 from 32 bytes to fill the key
         static u128 *GenNewCLKey(unsigned char *seedBytes32)
         {
@@ -220,7 +222,7 @@ class CVerusHashV2
             // get the final hash with a mutated dynamic key for each hash result
             (*haraka512KeyedFunction)(hash, curBuf, key + IntermediateTo128Offset(intermediate));
         }
-#endif // VERUS_BPF_TARGET
+#endif // !defined(VERUS_FORCE_PORTABLE_IMPL) && !defined(VERUS_BPF_TARGET)
 
         // This version of ExtraHash is always available
         inline void ExtraHash(unsigned char hash[32]) { (*haraka512Function)(hash, curBuf); }

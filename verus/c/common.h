@@ -55,13 +55,31 @@
     #define htobe64(x) bpf_bswap64(x)
 
 #else // Not VERUS_BPF_TARGET (host systems)
-    #ifdef WIN32
+    #if defined(_WIN32) || defined(_WIN64)
         // This path is for Windows. If it's ever used, compat/endian.h would be needed.
         // The file compat/endian.h is not present in the project.
-        // This could be an issue for Windows host builds if <endian.h> is not found.
+        // This could be an issue for Windows host builds if <endian.h> is not found
+        // or if the compiler (like MSVC) doesn't provide <endian.h>.
+        // MSVC provides _byteswap_ushort, _byteswap_ulong, _byteswap_uint64 in <stdlib.h>.
+        // MinGW might provide <endian.h>.
+        // For now, we keep the original logic which might require a "compat/endian.h" file.
         #include "compat/endian.h" 
+    #elif defined(__APPLE__)
+        #include <libkern/OSByteOrder.h>
+        #define htobe16(x) OSSwapHostToBigInt16(x)
+        #define htole16(x) OSSwapHostToLittleInt16(x)
+        #define be16toh(x) OSSwapBigToHostInt16(x)
+        #define le16toh(x) OSSwapLittleToHostInt16(x)
+        #define htobe32(x) OSSwapHostToBigInt32(x)
+        #define htole32(x) OSSwapHostToLittleInt32(x)
+        #define be32toh(x) OSSwapBigToHostInt32(x)
+        #define le32toh(x) OSSwapLittleToHostInt32(x)
+        #define htobe64(x) OSSwapHostToBigInt64(x)
+        #define htole64(x) OSSwapHostToLittleInt64(x)
+        #define be64toh(x) OSSwapBigToHostInt64(x)
+        #define le64toh(x) OSSwapLittleToHostInt64(x)
     #else
-        #include <endian.h> // For Linux, macOS, etc.
+        #include <endian.h> // For Linux and other POSIX systems
     #endif
 #endif
 

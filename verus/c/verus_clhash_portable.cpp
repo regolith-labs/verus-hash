@@ -1185,6 +1185,39 @@ uint64_t verusclhash_port(void * random, const unsigned char buf[64], uint64_t k
     return precompReduction64_port(acc);
 }
 
+// Definition of alloc_aligned_buffer, moved from verus_clhash.cpp
+// This function is needed by the verusclhasher constructor, which might be
+// compiled even when using portable features on host, if not BPF.
+#ifndef VERUS_BPF_TARGET // This function uses stdlib malloc, not for BPF
+#include <stdlib.h> // For posix_memalign / _aligned_malloc / errno
+#ifdef _WIN32
+// No specific include for errno needed, it's a macro from stdlib.h
+#else
+#include <errno.h> // For errno on POSIX
+#endif
+
+void *alloc_aligned_buffer(uint64_t bufSize)
+{
+    void *answer = NULL;
+    if (posix_memalign(&answer, sizeof(__m128i)*2, bufSize)) // sizeof(__m128i) is okay here as it's for alignment value
+    {
+        return NULL;
+    }
+    else
+    {
+        return answer;
+    }
+}
+#else // VERUS_BPF_TARGET
+// For BPF, provide a stub or ensure it's not called.
+// The verusclhasher struct (which calls this) is excluded for BPF, so this shouldn't be reached.
+// However, to be safe and avoid linker errors if something changes:
+void *alloc_aligned_buffer(uint64_t bufSize) {
+    (void)bufSize; // Suppress unused parameter warning
+    return NULL; // BPF should not allocate dynamic memory this way
+}
+#endif // VERUS_BPF_TARGET
+
 // hashes 64 bytes only by doing a carryless multiplication and reduction of the repeated 64 byte sequence 16 times, 
 // returning a 64 bit hash value
 uint64_t verusclhash_sv2_1_port(void * random, const unsigned char buf[64], uint64_t keyMask, __m128i **pMoveScratch) {

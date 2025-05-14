@@ -93,18 +93,35 @@ fn main() {
     // Note: CFLAGS/CXXFLAGS are handled within build.sh by appending to existing env vars.
 
     // Add VERUS_BPF_TARGET define if building for BPF/SBF
+    // Also, SBF/BPF implies forcing portable C implementations.
+    // If 'portable' feature is enabled for host, also force portable C.
+    let mut cflags_to_add = Vec::new();
+    let mut cxxflags_to_add = Vec::new();
+
     if target.contains("sbf") || target.contains("bpf") {
-        // Propagate as a CFLAG. build.sh should append this to its CFLAGS.
-        let current_cflags = env::var("CFLAGS").unwrap_or_default();
-        command.env("CFLAGS", format!("{} -DVERUS_BPF_TARGET=1", current_cflags));
-        // Also for CXXFLAGS if C++ files use this macro
-        let current_cxxflags = env::var("CXXFLAGS").unwrap_or_default();
-        command.env(
-            "CXXFLAGS",
-            format!("{} -DVERUS_BPF_TARGET=1", current_cxxflags),
-        );
-        println!("cargo:rustc-cfg=verus_bpf_target"); // For Rust code conditional compilation
+        cflags_to_add.push("-DVERUS_BPF_TARGET=1".to_string());
+        cxxflags_to_add.push("-DVERUS_BPF_TARGET=1".to_string());
+        // For SBF/BPF, VERUS_FORCE_PORTABLE_IMPL is effectively true and handled by build.sh
+        // build.sh will add -DVERUS_FORCE_PORTABLE_IMPL=1 for BPF targets
+        println!("cargo:rustc-cfg=verus_bpf_target");
+        // Pass this info to build.sh too
+        command.env("BUILD_RS_TARGET_IS_BPF", "1");
+    } else if portable_enabled {
+        // Host target with 'portable' feature enabled
+        // Signal build.sh to use portable C implementations
+        command.env("BUILD_RS_REQUESTS_PORTABLE_C_IMPL", "1");
+        // build.sh will be responsible for adding -DVERUS_FORCE_PORTABLE_IMPL=1
     }
+    // Note: If host and portable is NOT enabled, IsCPUVerusOptimized() will take effect.
+
+    // Append any general flags if needed (currently none specific here, handled by build.sh)
+    let current_cflags = env::var("CFLAGS").unwrap_or_default();
+    let new_cflags = format!("{} {}", current_cflags, cflags_to_add.join(" ")); // cflags_to_add might be empty for host
+    command.env("CFLAGS", new_cflags.trim());
+
+    let current_cxxflags = env::var("CXXFLAGS").unwrap_or_default();
+    let new_cxxflags = format!("{} {}", current_cxxflags, cxxflags_to_add.join(" ")); // cxxflags_to_add might be empty for host
+    command.env("CXXFLAGS", new_cxxflags.trim());
 
     // Execute the build script
     let status = command.status().expect("failed to run build.sh");
@@ -143,11 +160,14 @@ fn main() {
 
     // IMPORTANT: **do NOT link the system C++ std-lib when building for SBF**
     // It's okay (and usually necessary) to link it for host builds.
-    // However, the Rust linker seems to handle this automatically for host builds.
-    // Explicitly linking `libc++` might be needed on some systems if linking fails.
-    // if !target.contains("sbf") && !target.contains("bpf") {
-    //     println!("cargo:rustc-link-lib=c++");
-    // }
+    if !target.contains("sbf") && !target.contains("bpf") {
+        if target.contains("apple-darwin") {
+            println!("cargo:rustc-link-lib=c++");
+        } else {
+            // For other non-SBF systems like Linux, it's typically libstdc++
+            println!("cargo:rustc-link-lib=stdc++");
+        }
+    }
 
     // Re-run this script if C/C++ sources change
     // Add paths relative to CARGO_MANIFEST_DIR (verus crate root) using the 'c' directory

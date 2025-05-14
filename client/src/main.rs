@@ -20,7 +20,7 @@ const RPC_URL: &str = "http://localhost:8899";
 fn main() -> anyhow::Result<()> {
     // 1) connection + payer
     let client = RpcClient::new_with_commitment(RPC_URL.to_string(), CommitmentConfig::confirmed());
-    println!("RC[0..16] in client  = {:02x?}", &verus::haraka_rc()[..16]); // Print constants used by client
+    // println!("RC[0..16] in client  = {:02x?}", &verus::haraka_rc()[..16]); // Print constants used by client - REMOVED
     let payer_path = dirs::home_dir().unwrap().join(".config/solana/id.json");
     let payer =
         read_keypair_file(&payer_path).map_err(|_err| anyhow::anyhow!("failed to read keypair"))?;

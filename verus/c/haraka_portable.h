@@ -1,6 +1,10 @@
 #ifndef SPX_HARAKA_H
 #define SPX_HARAKA_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdint.h> // Include for uint64_t etc.
 
 #ifdef VERUS_BPF_TARGET
@@ -125,5 +129,9 @@ void haraka256_port(unsigned char *out, const unsigned char *in);
 
 /* Implementation of Haraka-256 using sk.seed constants */
 void haraka256_sk(unsigned char *out, const unsigned char *in);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

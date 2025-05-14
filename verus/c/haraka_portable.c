@@ -90,10 +90,11 @@ static const unsigned char sbox[256] =
 #define XT(x) (((x) << 1) ^ ((((x) >> 7) & 1) * 0x1b))
 
 // Simulate _mm_aesenc_si128 instructions from AESNI
+// Made non-static so it can be linked from other .c/.cpp files if needed via haraka_portable.h macros
 void aesenc(unsigned char *s, const unsigned char *rk) 
 {
-    unsigned char i, t, u; // v is now static
-    static unsigned char v[4][4]; // Made static
+    unsigned char i, t, u;
+    unsigned char v[4][4]; // Made non-static (stack allocated)
     for (i = 0; i < 16; ++i) {
         v[((i / 4) + 4 - (i%4) ) % 4][i % 4] = sbox[s[i]];
     }
@@ -111,9 +112,10 @@ void aesenc(unsigned char *s, const unsigned char *rk)
 }
 
 // Simulate _mm_unpacklo_epi32
+// Made non-static
 void unpacklo32(unsigned char *t, unsigned char *a, unsigned char *b) 
 {
-    static unsigned char tmp[16]; // Made static
+    unsigned char tmp[16]; // Made non-static (stack allocated)
     memcpy(tmp, a, 4);
     memcpy(tmp + 4, b, 4);
     memcpy(tmp + 8, a + 4, 4);
@@ -122,9 +124,10 @@ void unpacklo32(unsigned char *t, unsigned char *a, unsigned char *b)
 }
 
 // Simulate _mm_unpackhi_epi32
+// Made non-static
 void unpackhi32(unsigned char *t, unsigned char *a, unsigned char *b) 
 {
-    static unsigned char tmp[16]; // Made static
+    unsigned char tmp[16]; // Made non-static (stack allocated)
     memcpy(tmp, a + 8, 4);
     memcpy(tmp + 4, b + 8, 4);
     memcpy(tmp + 8, a + 12, 4);
@@ -238,7 +241,7 @@ void haraka512_perm(unsigned char *out, const unsigned char *in)
 {
     int i, j;
 
-    static unsigned char s[64], tmp[16]; // Made static
+    unsigned char s[64], tmp[16]; // Made non-static (stack allocated)
 
     memcpy(s, in, 16);
     memcpy(s + 16, in + 16, 16);
@@ -272,7 +275,7 @@ void haraka512_perm_keyed(unsigned char *out, const unsigned char *in, const u12
 {
     int i, j;
 
-    static unsigned char s[64], tmp[16]; // Made static
+    unsigned char s[64], tmp[16]; // Made non-static (stack allocated)
 
     memcpy(s, in, 16);
     memcpy(s + 16, in + 16, 16);
@@ -344,7 +347,7 @@ void haraka512_perm_zero(unsigned char *out, const unsigned char *in)
 {
     int i, j;
 
-    static unsigned char s[64], tmp[16]; // Made static
+    unsigned char s[64], tmp[16]; // Made non-static (stack allocated)
 
     memcpy(s, in, 16);
     memcpy(s + 16, in + 16, 16);
