@@ -1,4 +1,5 @@
 use solana_client::rpc_client::RpcClient;
+use solana_sdk::system_instruction; // For system program account if needed, though not for these opcodes
 use solana_sdk::{
     commitment_config::CommitmentConfig,
     // instruction::{AccountMeta, Instruction}, // AccountMeta removed
@@ -7,7 +8,7 @@ use solana_sdk::{
     signature::{read_keypair_file, Signer},
     transaction::Transaction,
 };
-use std::{str::FromStr, time::Instant}; // Added Instant for timing
+use std::{str::FromStr, time::Instant};
 use verus; // Import the verus crate
 
 // ------------------------------------------------------------------
@@ -17,13 +18,56 @@ const PROGRAM_ID: &str = "DCCoS9rqVhJyq17XAizxntC4Hw9rHaXjZRsC53kHHMgp";
 const RPC_URL: &str = "http://localhost:8899";
 // ------------------------------------------------------------------
 
+// Function to test Opcode 0 (Golden Vector Verification)
+fn test_opcode_0(client: &RpcClient, payer: &solana_sdk::signature::Keypair) -> anyhow::Result<()> {
+    println!("\n--- Testing Opcode 0: Golden Vector Verification ---");
+    let program_pubkey = Pubkey::from_str(PROGRAM_ID)?;
+
+    // Instruction data for Opcode 0 is just the opcode itself
+    let instruction_data = vec![0u8];
+
+    let ix = Instruction {
+        program_id: program_pubkey,
+        accounts: vec![], // Opcode 0 does not require any accounts
+        data: instruction_data,
+    };
+
+    println!("Sending transaction for Opcode 0 (Golden Vector)...");
+    let recent_blockhash = client.get_latest_blockhash()?;
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[payer],
+        recent_blockhash,
+    );
+
+    match client.send_and_confirm_transaction(&tx) {
+        Ok(sig) => {
+            println!("✅ Opcode 0 Transaction successful! Signature: {}", sig);
+        }
+        Err(e) => {
+            eprintln!("❌ Opcode 0 Transaction failed: {}", e);
+            return Err(anyhow::anyhow!("Opcode 0 transaction failed"));
+        }
+    }
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     // 1) connection + payer
     let client = RpcClient::new_with_commitment(RPC_URL.to_string(), CommitmentConfig::confirmed());
-    // println!("RC[0..16] in client  = {:02x?}", &verus::haraka_rc()[..16]); // Print constants used by client - REMOVED
     let payer_path = dirs::home_dir().unwrap().join(".config/solana/id.json");
     let payer =
         read_keypair_file(&payer_path).map_err(|_err| anyhow::anyhow!("failed to read keypair"))?;
+
+    // Test Opcode 0 first
+    if let Err(e) = test_opcode_0(&client, &payer) {
+        eprintln!("Error during Opcode 0 test: {}", e);
+        // Decide if you want to stop or continue to Opcode 1 test
+        // For now, let's continue to allow testing Opcode 1 even if 0 fails
+    }
+
+    println!("\n--- Testing Opcode 1: Client Hash Verification ---");
 
     // 2) Define challenge and difficulty
     // TODO: These should likely come from command-line arguments or configuration
@@ -59,7 +103,8 @@ fn main() -> anyhow::Result<()> {
     let msg_len: u32 = msg_data.len() as u32; // Should be 64
 
     // Construct the full instruction data: opcode(1) | msg_len(4 LE = 64) | msg(64) | target(32)
-    let mut instruction_data = Vec::with_capacity(1 + 4 + 64 + 32); // 1 + 4 + 64 + 32 = 101 bytes
+    // msg_data is already the 64-byte message (challenge + signer_prefix + nonce)
+    let mut instruction_data = Vec::with_capacity(1 + 4 + msg_data.len() + target_be.len());
     instruction_data.push(1u8); // Opcode 1
     instruction_data.extend_from_slice(&msg_len.to_le_bytes()); // Message length (4 bytes LE = 64)
     instruction_data.extend_from_slice(&msg_data); // The actual message (64 bytes)
@@ -85,12 +130,12 @@ fn main() -> anyhow::Result<()> {
 
     match client.send_and_confirm_transaction(&tx) {
         Ok(sig) => {
-            println!("✅ Transaction successful! Signature: {}", sig);
+            println!("✅ Opcode 1 Transaction successful! Signature: {}", sig);
         }
         Err(e) => {
-            eprintln!("❌ Transaction failed: {}", e);
+            eprintln!("❌ Opcode 1 Transaction failed: {}", e);
             // Consider adding more specific error handling if needed
-            return Err(anyhow::anyhow!("Transaction failed"));
+            return Err(anyhow::anyhow!("Opcode 1 transaction failed"));
         }
     }
 

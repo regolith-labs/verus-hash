@@ -19,6 +19,7 @@ default = []
 
 [dependencies]
 bytemuck = { workspace = true }
+hex-literal = "0.4"
 solana-program = { workspace = true }
 verus = { path = "../verus" }         # Add the verus crate dependency
 
