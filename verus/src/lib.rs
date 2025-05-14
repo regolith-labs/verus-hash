@@ -123,6 +123,10 @@ mod tests {
         // Compute the hash using the verus_hash_v2 function (which should be using the C FFI)
         let computed_hash = verus_hash_v2(input_data);
 
+        // Print the computed and expected hashes for verification
+        println!("Computed hash (LE): {:x?}", computed_hash);
+        println!("Expected hash (LE): {:x?}", expected_hash_le);
+
         assert_eq!(
             computed_hash, expected_hash_le,
             "VerusHash V2 output does not match the golden vector."
