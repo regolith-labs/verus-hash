@@ -103,3 +103,29 @@ pub use native_verus_hash::verus_hash_v2;
 
 // Ensure that at least one implementation is available.
 // The `default = ["portable"]` in Cargo.toml should handle this.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hex_literal::hex;
+
+    #[test]
+    fn test_verus_hash_v2_golden_vector() {
+        // Input: "Test1234" repeated 12 times
+        // Hex: 546573743132333454657374313233345465737431323334546573743132333454657374313233345465737431323334546573743132333454657374313233345465737431323334546573743132333454657374313233345465737431323334
+        let input_data = b"Test1234Test1234Test1234Test1234Test1234Test1234Test1234Test1234Test1234Test1234Test1234Test1234";
+
+        // Expected output hash (Little-Endian Hex for VerusHash V2 Default/Explicit):
+        // ed3dbd1d798342264cbfee4a49564917edb68b3a5c566d1f487005113bc4ce55
+        let expected_hash_le =
+            hex!("ed3dbd1d798342264cbfee4a49564917edb68b3a5c566d1f487005113bc4ce55");
+
+        // Compute the hash using the verus_hash_v2 function (which should be using the C FFI)
+        let computed_hash = verus_hash_v2(input_data);
+
+        assert_eq!(
+            computed_hash, expected_hash_le,
+            "VerusHash V2 output does not match the golden vector."
+        );
+    }
+}
