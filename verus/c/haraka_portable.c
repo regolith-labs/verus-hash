@@ -94,7 +94,7 @@ static const unsigned char sbox[256] =
 void aesenc(unsigned char *s, const unsigned char *rk) 
 {
     unsigned char i, t, u;
-    unsigned char v[4][4]; // Made non-static (stack allocated)
+    static unsigned char v[4][4]; // Made static
     for (i = 0; i < 16; ++i) {
         v[((i / 4) + 4 - (i%4) ) % 4][i % 4] = sbox[s[i]];
     }
@@ -115,7 +115,7 @@ void aesenc(unsigned char *s, const unsigned char *rk)
 // Made non-static
 void unpacklo32(unsigned char *t, unsigned char *a, unsigned char *b) 
 {
-    unsigned char tmp[16]; // Made non-static (stack allocated)
+    static unsigned char tmp[16]; // Made static
     memcpy(tmp, a, 4);
     memcpy(tmp + 4, b, 4);
     memcpy(tmp + 8, a + 4, 4);
@@ -127,7 +127,7 @@ void unpacklo32(unsigned char *t, unsigned char *a, unsigned char *b)
 // Made non-static
 void unpackhi32(unsigned char *t, unsigned char *a, unsigned char *b) 
 {
-    unsigned char tmp[16]; // Made non-static (stack allocated)
+    static unsigned char tmp[16]; // Made static
     memcpy(tmp, a + 8, 4);
     memcpy(tmp + 4, b + 8, 4);
     memcpy(tmp + 8, a + 12, 4);
@@ -241,7 +241,7 @@ void haraka512_perm(unsigned char *out, const unsigned char *in)
 {
     int i, j;
 
-    unsigned char s[64], tmp[16]; // Made non-static (stack allocated)
+    static unsigned char s[64], tmp[16]; // Made static
 
     memcpy(s, in, 16);
     memcpy(s + 16, in + 16, 16);
@@ -275,7 +275,7 @@ void haraka512_perm_keyed(unsigned char *out, const unsigned char *in, const u12
 {
     int i, j;
 
-    unsigned char s[64], tmp[16]; // Made non-static (stack allocated)
+    static unsigned char s[64], tmp[16]; // Made static
 
     memcpy(s, in, 16);
     memcpy(s + 16, in + 16, 16);
@@ -347,7 +347,7 @@ void haraka512_perm_zero(unsigned char *out, const unsigned char *in)
 {
     int i, j;
 
-    unsigned char s[64], tmp[16]; // Made non-static (stack allocated)
+    static unsigned char s[64], tmp[16]; // Made static
 
     memcpy(s, in, 16);
     memcpy(s + 16, in + 16, 16);
@@ -400,7 +400,7 @@ void haraka256_port(unsigned char *out, const unsigned char *in)
 {
     int i, j;
 
-    unsigned char s[32], tmp[16];
+    static unsigned char s[32], tmp[16]; // Made static
 
     memcpy(s, in, 16);
     memcpy(s + 16, in + 16, 16);
@@ -463,7 +463,7 @@ void haraka256_sk(unsigned char *out, const unsigned char *in)
 {
     int i, j;
 
-    unsigned char s[32], tmp[16];
+    static unsigned char s[32], tmp[16]; // Made static
 
     memcpy(s, in, 16);
     memcpy(s + 16, in + 16, 16);
